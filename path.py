@@ -23,7 +23,7 @@ from inverse_geometry import computeqgrasppose
 def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     sampleNo = 100
     samples = sampleCubePlacement(robot, qinit, cube, sampleNo, viz=None)
-    RRT = RRTConnect(cubeplacementq0, cubeplacementq0, samples)
+    RRT = RRTConnect(cubeplacementq0, cubeplacementqgoal, samples)
     path, configurations = RRT.plan()
 
     return configurations
@@ -34,8 +34,8 @@ def sampleCubePlacement(robot, q, cube, noSamples, viz=None):
     samples = np.empty(noSamples, dtype=pin.SE3)
     for i in range(noSamples):
         placement = samplePlacement()
-        while checkCollision(robot, q, cube, placement):
-            placement = samplePlacement()
+        # while checkCollision(robot, q, cube, placement):
+        #    placement = samplePlacement()
         samples[i] = placement
     return samples
 
@@ -47,7 +47,7 @@ def checkCollision(robot, q, cube, placement):
 
 def samplePlacement():
     t = np.random.rand(3)
-    minimums = np.array([0.2, -0.7, 0.93])
+    minimums = np.array([0.2, -0.7, 1.0])
     maximums = np.array([0.6, 0.4, 1.3])
     t = (t * (maximums - minimums)) + minimums
     cube_placement = pin.SE3(rotate("z", 0), t)
@@ -58,15 +58,16 @@ def samplePlacement():
 
 
 class Node:
-    def __init__(self, state, parent=None):
+    def __init__(self, state, pose, parent=None):
         self.state = state
         self.parent = parent
+        self.pose = pose
 
 
 class RRTConnect:
-    def __init__(self, start, goal, samples, step_size=0.1, iterations=100):
-        self.start_tree = [Node(start)]
-        self.goal_tree = [Node(goal)]
+    def __init__(self, start, goal, samples, step_size=0.02, iterations=100):
+        self.start_tree = [Node(start, q0)]
+        self.goal_tree = [Node(goal, qe)]
         self.samples = samples
         self.step_size = step_size
         self.iterations = iterations
@@ -85,11 +86,11 @@ class RRTConnect:
     def new_state(self, nearest_node, sample):
         # Calculate the direction from the nearest state to the random state
         direction_translation = sample.translation - nearest_node.state.translation
-        direction_rotation = pin.log(inv(nearest_node.state.rotation) * sample.rotation)
+        # direction_rotation = pin.log(inv(nearest_node.state.rotation) * sample.rotation)
 
         # Ensure the step size is not greater than the distance
         magnitude_translation = np.linalg.norm(direction_translation)
-        magnitude_rotation = np.linalg.norm(direction_rotation)
+        # magnitude_rotation = np.linalg.norm(direction_rotation)
 
         if magnitude_translation < self.step_size:
             new_translation = sample.translation
@@ -99,37 +100,45 @@ class RRTConnect:
                 + (direction_translation / magnitude_translation) * self.step_size
             )
 
-        if magnitude_rotation < self.step_size:
-            new_rotation = sample.rotation
-        else:
-            new_rotation = nearest_node.state.rotation * pin.exp(
-                (direction_rotation / magnitude_rotation) * self.step_size
-            )
+        #        if magnitude_rotation < self.step_size:
+        #            new_rotation = sample.rotation
+        #        else:
+        #            new_rotation = nearest_node.state.rotation * pin.exp(
+        #                (direction_rotation / magnitude_rotation) * self.step_size
+        #            )
 
         # Create the new SE3 state
-        new_state = pin.SE3(new_rotation, new_translation)
-        return new_state
+        new_state = pin.SE3(rotate("z", 0.0), new_translation)
+        pose, success = computeqgrasppose(robot, q, cube, new_state)
+        return new_state, pose, success
 
     def plan(self):
         for _ in range(self.iterations):
             sample = np.random.choice(self.samples)
+            print("Sample Translation is: ", sample.translation)
             # Extend the tree from start towards the sample
             nearest_node_start = self.nearest_neighbor(self.start_tree, sample)
-            new_state_start = self.new_state(nearest_node_start, sample)
-            if not checkCollision(robot, q, cube, new_state_start):
-                new_node_start = Node(new_state_start, nearest_node_start)
+            new_state_start, pose, success = self.new_state(nearest_node_start, sample)
+
+            if success:
+                new_node_start = Node(new_state_start, pose, nearest_node_start)
                 self.start_tree.append(new_node_start)
             else:
                 new_node_start = nearest_node_start
 
+            print("Nearest Start Node is: ", new_node_start.state.translation)
+
             # Extend the tree from goal towards the sample
-            nearest_node_goal = self.nearest_neighbor(self.goal_tree, new_state_start)
-            new_state_goal = self.new_state(nearest_node_goal, new_state_start)
-            if not checkCollision(robot, q, cube, new_state_goal):
-                new_node_goal = Node(new_state_goal, nearest_node_goal)
+            nearest_node_goal = self.nearest_neighbor(self.goal_tree, sample)
+            new_state_goal, pose, success = self.new_state(nearest_node_goal, sample)
+            print(checkCollision(robot, q, cube, new_state_goal))
+            if success:
+                new_node_goal = Node(new_state_goal, pose, nearest_node_goal)
                 self.goal_tree.append(new_node_goal)
             else:
                 new_node_goal = nearest_node_goal
+
+            print("Nearest Goal Node is: ", new_node_goal.state.translation)
 
             # Check if we've connected the two trees
             if (
@@ -145,14 +154,12 @@ class RRTConnect:
         configurations = []
         while node_start is not None:
             path.insert(0, node_start.state)
-            q1, _ = computeqgrasppose(robot, q, cube, node_start.state)
-            configurations.insert(0, q1)
+            configurations.insert(0, node_start.pose)
             node_start = node_start.parent
         node_goal = node_goal.parent
         while node_goal is not None:
             path.append(node_goal.state)
-            q1, _ = computeqgrasppose(robot, q, cube, node_goal.state)
-            configurations.insert(0, q1)
+            configurations.insert(0, node_goal.pose)
             node_goal = node_goal.parent
         return path, configurations
 
@@ -173,6 +180,8 @@ if __name__ == "__main__":
     q = robot.q0.copy()
     q0, successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
     qe, successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET, viz)
+
+    print(successinit, successend)
 
     if not (successinit and successend):
         print("error: invalid initial or end configuration")
