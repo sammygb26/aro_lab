@@ -24,9 +24,9 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     sampleNo = 100
     samples = sampleCubePlacement(robot, qinit, cube, sampleNo, viz=None)
     RRT = RRTConnect(cubeplacementq0, cubeplacementq0, samples)
-    path = RRT.plan()
+    path, configurations = RRT.plan()
 
-    return path
+    return configurations
 
 
 def sampleCubePlacement(robot, q, cube, noSamples, viz=None):
@@ -47,8 +47,8 @@ def checkCollision(robot, q, cube, placement):
 
 def samplePlacement():
     t = np.random.rand(3)
-    minimums = np.array([0.2, -1.0, 0.93])
-    maximums = np.array([0.6, 0.5, 1.4])
+    minimums = np.array([0.2, -0.7, 0.93])
+    maximums = np.array([0.6, 0.4, 1.3])
     t = (t * (maximums - minimums)) + minimums
     cube_placement = pin.SE3(rotate("z", 0), t)
     return cube_placement
@@ -119,6 +119,8 @@ class RRTConnect:
             if not checkCollision(robot, q, cube, new_state_start):
                 new_node_start = Node(new_state_start, nearest_node_start)
                 self.start_tree.append(new_node_start)
+            else:
+                new_node_start = nearest_node_start
 
             # Extend the tree from goal towards the sample
             nearest_node_goal = self.nearest_neighbor(self.goal_tree, new_state_start)
@@ -126,6 +128,8 @@ class RRTConnect:
             if not checkCollision(robot, q, cube, new_state_goal):
                 new_node_goal = Node(new_state_goal, nearest_node_goal)
                 self.goal_tree.append(new_node_goal)
+            else:
+                new_node_goal = nearest_node_goal
 
             # Check if we've connected the two trees
             if (
@@ -138,14 +142,19 @@ class RRTConnect:
 
     def extract_path(self, node_start, node_goal):
         path = []
+        configurations = []
         while node_start is not None:
             path.insert(0, node_start.state)
+            q1, _ = computeqgrasppose(robot, q, cube, node_start.state)
+            configurations.insert(0, q1)
             node_start = node_start.parent
         node_goal = node_goal.parent
         while node_goal is not None:
             path.append(node_goal.state)
+            q1, _ = computeqgrasppose(robot, q, cube, node_goal.state)
+            configurations.insert(0, q1)
             node_goal = node_goal.parent
-        return path
+        return path, configurations
 
 
 def displaypath(robot, path, dt, viz):
@@ -169,5 +178,7 @@ if __name__ == "__main__":
         print("error: invalid initial or end configuration")
 
     path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    print(qe)
+    print(path)
 
     displaypath(robot, path, dt=0.5, viz=viz)  # you ll probably want to lower dt
