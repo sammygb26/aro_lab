@@ -13,7 +13,7 @@ from tools import collision, getcubeplacement, setcubeplacement, projecttojointl
 from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
 from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
-from tools import setcubeplacement, collision, jointlimitscost
+from tools import setcubeplacement, collision, jointlimitscost, jointlimitsviolated
 from pinocchio import Quaternion, SE3
 
 import scipy.optimize as optim
@@ -30,13 +30,7 @@ def computeqgrasppose(robot : pin.RobotWrapper, qcurrent, cube, cubetarget, viz=
         if viz:
             viz.display(q)
 
-    def constraint(q):
-        constraints = np.zeros(1)
-        #constraints[0] = 1 if collision(robot, q) else 0
-        print(constraints)
-        return constraints
-    
-    eps = 1e-4
+    eps = 0
 
     def cost(q):
         pin.framesForwardKinematics(robot.model, robot.data, q)
@@ -45,10 +39,10 @@ def computeqgrasppose(robot : pin.RobotWrapper, qcurrent, cube, cubetarget, viz=
             return oMf.translation, Quaternion(oMf.rotation)
 
         lhand_p, lhand_quat = to_p_quat(robot.data.oMf[left_id])
-        lhook_p, lhook_quat = to_p_quat(getcubeplacement(cube, LEFT_HOOK))
+        _, lhook_quat = to_p_quat(getcubeplacement(cube, LEFT_HOOK))
 
         rhand_p, rhand_quat = to_p_quat(robot.data.oMf[right_id])
-        rhook_p, rhook_quat = to_p_quat(getcubeplacement(cube, RIGHT_HOOK))
+        _, rhook_quat = to_p_quat(getcubeplacement(cube, RIGHT_HOOK))
 
         p_l = (getcubeplacement(cube, LEFT_HOOK) @ np.array([0.0, eps, 0.0, 1.0]))[:3]
         p_r = (getcubeplacement(cube, RIGHT_HOOK) @ np.array([0.0, eps, 0.0, 1.0]))[:3]
@@ -62,7 +56,7 @@ def computeqgrasppose(robot : pin.RobotWrapper, qcurrent, cube, cubetarget, viz=
     
     q_sol = optim.minimize(cost, qcurrent, callback=callback)
 
-    return q_sol.x, True
+    return q_sol.x, 1e-4 > cost(q_sol.x) and not collision(robot, q_sol.x) and not jointlimitsviolated(robot, q)
             
 if __name__ == "__main__":
     from tools import setupwithmeshcat
