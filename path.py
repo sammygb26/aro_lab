@@ -24,7 +24,12 @@ def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     sampleNo = 100
     samples = sampleCubePlacement(robot, qinit, cube, sampleNo, viz=None)
     RRT = RRTConnect(cubeplacementq0, cubeplacementqgoal, samples)
-    path, configurations = RRT.plan()
+    flag, (path, configurations) = RRT.plan()
+    if flag == False:
+        return (
+            flag,
+            configurations,
+        )
 
     return configurations
 
@@ -65,7 +70,7 @@ class Node:
 
 
 class RRTConnect:
-    def __init__(self, start, goal, samples, step_size=0.02, iterations=100):
+    def __init__(self, start, goal, samples, step_size=0.05, iterations=200):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
         self.samples = samples
@@ -115,7 +120,6 @@ class RRTConnect:
     def plan(self):
         for _ in range(self.iterations):
             sample = np.random.choice(self.samples)
-            print("Sample Translation is: ", sample.translation)
             # Extend the tree from start towards the sample
             nearest_node_start = self.nearest_neighbor(self.start_tree, sample)
             new_state_start, pose, success = self.new_state(nearest_node_start, sample)
@@ -126,28 +130,23 @@ class RRTConnect:
             else:
                 new_node_start = nearest_node_start
 
-            print("Nearest Start Node is: ", new_node_start.state.translation)
-
             # Extend the tree from goal towards the sample
             nearest_node_goal = self.nearest_neighbor(self.goal_tree, sample)
             new_state_goal, pose, success = self.new_state(nearest_node_goal, sample)
-            print(checkCollision(robot, q, cube, new_state_goal))
             if success:
                 new_node_goal = Node(new_state_goal, pose, nearest_node_goal)
                 self.goal_tree.append(new_node_goal)
             else:
                 new_node_goal = nearest_node_goal
 
-            print("Nearest Goal Node is: ", new_node_goal.state.translation)
-
             # Check if we've connected the two trees
             if (
                 self.calcDist(new_node_start.state, new_node_goal.state)
                 < self.step_size
             ):
-                return self.extract_path(new_node_start, new_node_goal)
+                return True, self.extract_path(new_node_start, new_node_goal)
 
-        return None
+        return False, self.extract_path(new_node_start, new_node_goal)
 
     def extract_path(self, node_start, node_goal):
         path = []
@@ -159,8 +158,10 @@ class RRTConnect:
         node_goal = node_goal.parent
         while node_goal is not None:
             path.append(node_goal.state)
-            configurations.insert(0, node_goal.pose)
+            configurations.append(node_goal.pose)
             node_goal = node_goal.parent
+
+        print(path, configurations)
         return path, configurations
 
 
@@ -187,7 +188,5 @@ if __name__ == "__main__":
         print("error: invalid initial or end configuration")
 
     path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
-    print(qe)
-    print(path)
 
     displaypath(robot, path, dt=0.5, viz=viz)  # you ll probably want to lower dt
