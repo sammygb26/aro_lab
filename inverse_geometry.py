@@ -13,7 +13,7 @@ from tools import collision, getcubeplacement, setcubeplacement, projecttojointl
 from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
 from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
-from tools import setcubeplacement, collision
+from tools import setcubeplacement, collision, jointlimitscost, jointlimitsviolated
 from pinocchio import Quaternion, SE3
 
 import scipy.optimize as optim
@@ -23,15 +23,14 @@ def computeqgrasppose(robot : pin.RobotWrapper, qcurrent, cube, cubetarget, viz=
     '''Return a collision free configuration grasping a cube at a specific location and a success flag'''
     setcubeplacement(robot, cube, cubetarget)
 
-    print(getcubeplacement(cube, LEFT_HOOK))
-    print(getcubeplacement(cube, RIGHT_HOOK))
-
     left_id = robot.model.getFrameId(LEFT_HAND)
     right_id = robot.model.getFrameId(RIGHT_HAND)
 
     def callback(q):
         if viz:
             viz.display(q)
+
+    eps = 0
 
     def cost(q):
         pin.framesForwardKinematics(robot.model, robot.data, q)
@@ -40,22 +39,24 @@ def computeqgrasppose(robot : pin.RobotWrapper, qcurrent, cube, cubetarget, viz=
             return oMf.translation, Quaternion(oMf.rotation)
 
         lhand_p, lhand_quat = to_p_quat(robot.data.oMf[left_id])
-        lhook_p, lhook_quat = to_p_quat(getcubeplacement(cube, LEFT_HOOK))
+        _, lhook_quat = to_p_quat(getcubeplacement(cube, LEFT_HOOK))
 
         rhand_p, rhand_quat = to_p_quat(robot.data.oMf[right_id])
-        rhook_p, rhook_quat = to_p_quat(getcubeplacement(cube, RIGHT_HOOK))
+        _, rhook_quat = to_p_quat(getcubeplacement(cube, RIGHT_HOOK))
 
-        cost = (norm(lhand_p - lhook_p) ** 2) + (norm(rhand_p - rhook_p) ** 2)
+        p_l = (getcubeplacement(cube, LEFT_HOOK) @ np.array([0.0, eps, 0.0, 1.0]))[:3]
+        p_r = (getcubeplacement(cube, RIGHT_HOOK) @ np.array([0.0, eps, 0.0, 1.0]))[:3]
+
+        cost = (norm(lhand_p - p_l) ** 2) + (norm(rhand_p - p_r) ** 2)
         cost += lhand_quat.angularDistance(lhook_quat) + rhand_quat.angularDistance(rhook_quat)
 
-        
-        cost += collision(robot, q) * 100
+        cost += jointlimitscost(robot, q)
 
         return cost
     
     q_sol = optim.minimize(cost, qcurrent, callback=callback)
 
-    return q_sol.x, q_sol.success
+    return q_sol.x, 1e-4 > cost(q_sol.x) and not collision(robot, q_sol.x) and not jointlimitsviolated(robot, q)
             
 if __name__ == "__main__":
     from tools import setupwithmeshcat
