@@ -20,10 +20,12 @@ from inverse_geometry import computeqgrasppose
 
 # returns a collision free path from qinit to qgoal under grasping constraints
 # the path is expressed as a list of configurations
-def computepath(qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
+def computepath(robot, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     sampleNo = 100
+    print("Starting sampling")
     samples = sampleCubePlacement(robot, qinit, cube, sampleNo, viz=None)
-    RRT = RRTConnect(cubeplacementq0, cubeplacementqgoal, samples)
+    print("Starting RRT")
+    RRT = RRTConnect(robot, cubeplacementq0, cubeplacementqgoal, samples)
     flag, (path, configurations) = RRT.plan()
     if flag == False:
         return (
@@ -38,24 +40,21 @@ def sampleCubePlacement(robot, q, cube, noSamples, viz=None):
     # Randomly sample cube placements
     samples = np.empty(noSamples, dtype=pin.SE3)
     for i in range(noSamples):
-        placement = samplePlacement()
-        # while checkCollision(robot, q, cube, placement):
-        #    placement = samplePlacement()
+        print(i)
+        placement = samplePlacement(robot, q, cube)
         samples[i] = placement
     return samples
 
 
-def checkCollision(robot, q, cube, placement):
-    q1, _ = computeqgrasppose(robot, q, cube, placement, viz)
-    return collision(robot, q1)
-
-
-def samplePlacement():
+def samplePlacement(robot, q, cube):
     t = np.random.rand(3)
-    minimums = np.array([0.2, -0.7, 1.0])
-    maximums = np.array([0.6, 0.4, 1.3])
+    minimums = np.array([0.2, -0.6, 1.0])
+    maximums = np.array([0.6, 0.3, 1.2])
     t = (t * (maximums - minimums)) + minimums
     cube_placement = pin.SE3(rotate("z", 0), t)
+    _, success = computeqgrasppose(robot, q, cube, cube_placement, viz)
+    if not success:
+        cube_placement = samplePlacement(robot, q, cube)
     return cube_placement
 
 
@@ -70,12 +69,13 @@ class Node:
 
 
 class RRTConnect:
-    def __init__(self, start, goal, samples, step_size=0.05, iterations=200):
+    def __init__(self, robot, start, goal, samples, step_size=0.025, iterations=200):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
         self.samples = samples
         self.step_size = step_size
         self.iterations = iterations
+        self.robots = robot
 
     def nearest_neighbor(self, tree, sample):
         distances = [self.calcDist(node.state, sample) for node in tree]
@@ -114,7 +114,7 @@ class RRTConnect:
 
         # Create the new SE3 state
         new_state = pin.SE3(rotate("z", 0.0), new_translation)
-        pose, success = computeqgrasppose(robot, q, cube, new_state)
+        pose, success = computeqgrasppose(self.robot, q, cube, new_state)
         return new_state, pose, success
 
     def plan(self):
@@ -187,6 +187,6 @@ if __name__ == "__main__":
     if not (successinit and successend):
         print("error: invalid initial or end configuration")
 
-    path = computepath(q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    path = computepath(robot, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
 
-    displaypath(robot, path, dt=0.5, viz=viz)  # you ll probably want to lower dt
+    displaypath(robot, path, dt=0.02, viz=viz)  # you ll probably want to lower dt
