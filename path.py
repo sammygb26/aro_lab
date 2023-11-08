@@ -50,11 +50,12 @@ def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
 
 
 def samplePlacement(robot, q, cube, viz=None):
-    t = np.random.rand(3)
     minimums = np.array([0.3, -0.3, 1.1])
     maximums = np.array([0.6, 0.1, 1.3])
-    t = (t * (maximums - minimums)) + minimums
     while True:
+        t = np.random.rand(3)
+        t = (t * (maximums - minimums)) + minimums
+
         cube_placement = pin.SE3(rotate("z", 0), t)
         _, success = computeqgrasppose(robot, q, cube, cube_placement, viz)
         if success:
