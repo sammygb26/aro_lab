@@ -57,14 +57,14 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
 
         return cost
 
-    q_sol = fmin_bfgs(cost, qcurrent, callback=callback, disp=False)
+    q_sol = fmin_bfgs(cost, qcurrent, callback=callback, disp=False, gtol=1e-5)
 
     print("Collision: ", collision(robot, q_sol))
     print("Joints: ", jointlimitsviolated(robot, q_sol))
     print("Cost: ", cost(q_sol))
 
     valid_config = (
-        1e-2 > cost(q_sol) and 
+        1e-1 >= cost(q_sol) and 
         not collision(robot, q_sol) 
         and not jointlimitsviolated(robot, q_sol))
 
