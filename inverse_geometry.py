@@ -44,14 +44,15 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         oM_lh = robot.data.oMf[left_id]
         oM_lc = getcubeplacement(cube, LEFT_HOOK)
 
-        oM_rh = robot.data.oMf[right_id]
+        oM_rh = robot.data.oMf[right_id - 1]
         oM_rc = getcubeplacement(cube, RIGHT_HOOK)
+        oM_rc = oM_rh @ inv(robot.data.oMf[right_id]) @ oM_rc
+
+
 
 
         l_nu = pin.log(oM_lc) - pin.log(oM_lh)
         r_nu = pin.log(oM_rc) - pin.log(oM_rh) 
-
-        print(r_nu)
 
         o_Jleft = pin.computeFrameJacobian(robot.model, robot.data, q, left_id)
         o_Jright = pin.computeFrameJacobian(robot.model, robot.data, q, right_id)
