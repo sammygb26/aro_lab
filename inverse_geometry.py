@@ -16,7 +16,7 @@ from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 from tools import setcubeplacement, collision, jointlimitscost, jointlimitsviolated
 from pinocchio import Quaternion, SE3
 
-import scipy.optimize as optim
+from scipy.optimize import fmin_bfgs
 import time
 
 
@@ -49,23 +49,26 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         p_r = (getcubeplacement(cube, RIGHT_HOOK) @ np.array([0.0, eps, 0.0, 1.0]))[:3]
 
         cost = (norm(lhand_p - p_l) ** 2) + (norm(rhand_p - p_r) ** 2)
-        cost += lhand_quat.angularDistance(lhook_quat) + rhand_quat.angularDistance(
-            rhook_quat
-        )
+        cost += (
+            lhand_quat.angularDistance(lhook_quat) + 
+            rhand_quat.angularDistance(rhook_quat))
 
         cost += jointlimitscost(robot, q)
 
         return cost
 
-    q_sol = optim.minimize(cost, qcurrent, callback=callback)
-    print("Collision: ", collision(robot, q_sol.x))
-    print("Joints: ", jointlimitsviolated(robot, q_sol.x))
-    print("Cost: ", cost(q_sol.x))
+    q_sol = fmin_bfgs(cost, qcurrent, callback=callback)
 
-    return q_sol.x, 1e-2 > cost(q_sol.x) and not collision(
-        robot, q_sol.x
-    ) and not jointlimitsviolated(robot, q_sol.x)
+    print("Collision: ", collision(robot, q_sol))
+    print("Joints: ", jointlimitsviolated(robot, q_sol))
+    print("Cost: ", cost(q_sol))
 
+    valid_config = (
+        1e-2 > cost(q_sol) and 
+        not collision(robot, q_sol) 
+        and not jointlimitsviolated(robot, q_sol))
+
+    return q_sol, valid_config
 
 if __name__ == "__main__":
     from tools import setupwithmeshcat
