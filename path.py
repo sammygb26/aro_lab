@@ -23,13 +23,14 @@ from inverse_geometry import computeqgrasppose
 def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     sampleNo = 100
     print("Starting sampling")
-    samples = []  # sampleCubePlacement(robot, qinit, cube, sampleNo, viz=None)
+    samples = []  # sampleCubePlacements(robot, qinit, cube, sampleNo, viz=None)
     print("Starting RRT")
     RRT = RRTConnect(
         robot, cube, cubeplacementq0, cubeplacementqgoal, samples, qinit, qgoal
     )
     flag, (path, configurations) = RRT.plan()
     if flag == False:
+        print(":sad_face:")
         return (
             flag,
             configurations,
@@ -38,7 +39,7 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     return configurations
 
 
-def sampleCubePlacement(robot, q, cube, noSamples, viz=None):
+def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
     # Randomly sample cube placements
     samples = np.empty(noSamples, dtype=pin.SE3)
     for i in range(noSamples):
@@ -53,11 +54,11 @@ def samplePlacement(robot, q, cube, viz=None):
     minimums = np.array([0.3, -0.3, 1.1])
     maximums = np.array([0.6, 0.1, 1.3])
     t = (t * (maximums - minimums)) + minimums
-    cube_placement = pin.SE3(rotate("z", 0), t)
-    _, success = computeqgrasppose(robot, q, cube, cube_placement, viz)
-    if not success:
-        cube_placement = samplePlacement(robot, q, cube)
-    return cube_placement
+    while True:
+        cube_placement = pin.SE3(rotate("z", 0), t)
+        _, success = computeqgrasppose(robot, q, cube, cube_placement, viz)
+        if success:
+            return cube_placement
 
 
 # Class to implement rapidly exploring random trees
@@ -72,7 +73,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=200
+        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
