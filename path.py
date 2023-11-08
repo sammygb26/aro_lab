@@ -47,9 +47,16 @@ def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
         samples[i] = placement
     return samples
 
+n_boxes = 0
+def log_cube(cubePlacement, success):
+    global n_boxes
+    name = f"log_box{n_boxes}"
+    viz.addBox(name, [0.1, 0.1, 0.1], [0.0, 1.0, 0.0] if success else [1.0, 0.0, 0.0])
+    viz.applyConfiguration(f"log_box{n_boxes}", cubePlacement)
+
 def randomCubePlacement():
-    minimums = np.array([0.3, -0.3, 1.1])
-    maximums = np.array([0.6, 0.1, 1.3])
+    minimums = np.array([0.2, -0.8, 1.0])
+    maximums = np.array([0.8, 0.8, 2.5])
     t = np.random.rand(3)
     t = (t * (maximums - minimums)) + minimums
     return pin.SE3(rotate("z", 0), t)
@@ -63,7 +70,9 @@ def samplePlacement(robot, q, cube):
 
 
 # Class to implement rapidly exploring random trees
-
+TRAPPED = 0
+ADVANCED = 1
+REACHED = 2
 
 class Node:
     def __init__(self, state, pose, parent=None):
@@ -85,7 +94,7 @@ class RRTConnect:
         self.cube = cube
         self.q = q0
 
-    def nearest_neighbor(self, tree, sample):
+    def nearest_neighbor(self, tree, sample) -> Node:
         distances = [self.calcDist(node.state, sample) for node in tree]
         nearest_node = tree[np.argmin(distances)]
         return nearest_node
@@ -95,66 +104,66 @@ class RRTConnect:
             sample.translation - target.translation
         )  # np.array([np.linalg.norm(pin.log(sample * np.linalg.inv(node.state))) for node in tree])
         return distance
-
-    def new_state(self, nearest_node, sample):
-        # Calculate the direction from the nearest state to the random state
-        direction_translation = sample.translation - nearest_node.state.translation
-        # direction_rotation = pin.log(inv(nearest_node.state.rotation) * sample.rotation)
-
-        # Ensure the step size is not greater than the distance
-        magnitude_translation = np.linalg.norm(direction_translation)
-        # magnitude_rotation = np.linalg.norm(direction_rotation)
-
-        if magnitude_translation < self.step_size:
-            new_translation = sample.translation
+    
+    def new_config(self, c_target, c_near):
+        if self.calcDist(c_near, c_target) < self.step_size:
+            c_new = c_target
         else:
-            new_translation = (
-                nearest_node.state.translation
-                + (direction_translation / magnitude_translation) * self.step_size
-            )
+            move_dir = c_target.translation - c_near.translation
+            move_dir /= norm(move_dir)
+            step = move_dir * self.step_size
+            c_new = pin.SE3(rotate("z", 0), c_near.translation + step)
 
-        #        if magnitude_rotation < self.step_size:
-        #            new_rotation = sample.rotation
-        #        else:
-        #            new_rotation = nearest_node.state.rotation * pin.exp(
-        #                (direction_rotation / magnitude_rotation) * self.step_size
-        #            )
+        q, success = computeqgrasppose(
+            self.robot, 
+            self.q, 
+            self.cube, 
+            c_new)
+        
+        log_cube(c_new, success)
+        
+        return q, c_new, success
 
-        # Create the new SE3 state
-        new_state = pin.SE3(rotate("z", 0.0), new_translation)
-        pose, success = computeqgrasppose(self.robot, self.q, self.cube, new_state)
-        return new_state, pose, success
+    def extend(self, tree, c_target):
+        n_near = self.nearest_neighbor(tree, c_target)
+
+        c_near = n_near.state
+        q, c_new, success = self.new_config(c_target, c_near)
+        if not success:
+            return TRAPPED, None
+        
+        n_new = Node(c_new, q, n_near)
+        tree.append(n_new) 
+        
+        if c_new == c_target:
+            return REACHED, n_new
+        else:
+            return ADVANCED, n_new
+        
+    def connect(self, tree, c_target):
+        S = ADVANCED
+        while S == ADVANCED:
+            S, n_new = self.extend(tree, c_target)
+        return S, n_new
 
     def plan(self):
+        tree_a = self.start_tree
+        tree_b = self.goal_tree
+
         for _ in range(self.iterations):
-            sample = randomCubePlacement()
-            # Extend the tree from start towards the sample
-            nearest_node_start = self.nearest_neighbor(self.start_tree, sample)
-            new_state_start, pose, success = self.new_state(nearest_node_start, sample)
+            c_rand = randomCubePlacement()
 
-            if success:
-                new_node_start = Node(new_state_start, pose, nearest_node_start)
-                self.start_tree.append(new_node_start)
-            else:
-                new_node_start = nearest_node_start
+            S_e, n_new_e = self.extend(tree_a, c_rand)
+            if not (S_e == TRAPPED):
+                S_c, n_new_c = self.connect(tree_b, n_new_e.state)
+                if S_c == REACHED:
+                    return True, self.extract_path(n_new_c, n_new_e)
+                
+            tmp = tree_a
+            tree_a = tree_b
+            tree_b = tmp
 
-            # Extend the tree from goal towards the sample
-            nearest_node_goal = self.nearest_neighbor(self.goal_tree, sample)
-            new_state_goal, pose, success = self.new_state(nearest_node_goal, sample)
-            if success:
-                new_node_goal = Node(new_state_goal, pose, nearest_node_goal)
-                self.goal_tree.append(new_node_goal)
-            else:
-                new_node_goal = nearest_node_goal
-
-            # Check if we've connected the two trees
-            if (
-                self.calcDist(new_node_start.state, new_node_goal.state)
-                < self.step_size
-            ):
-                return True, self.extract_path(new_node_start, new_node_goal)
-
-        return False, self.extract_path(new_node_start, new_node_goal)
+        return False, []
 
     def extract_path(self, node_start, node_goal):
         path = []
