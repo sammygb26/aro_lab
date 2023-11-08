@@ -38,7 +38,6 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
 
     return configurations
 
-
 def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
     # Randomly sample cube placements
     samples = np.empty(noSamples, dtype=pin.SE3)
@@ -48,15 +47,16 @@ def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
         samples[i] = placement
     return samples
 
-
-def samplePlacement(robot, q, cube, viz=None):
+def randomCubePlacement():
     minimums = np.array([0.3, -0.3, 1.1])
     maximums = np.array([0.6, 0.1, 1.3])
-    while True:
-        t = np.random.rand(3)
-        t = (t * (maximums - minimums)) + minimums
+    t = np.random.rand(3)
+    t = (t * (maximums - minimums)) + minimums
+    return pin.SE3(rotate("z", 0), t)
 
-        cube_placement = pin.SE3(rotate("z", 0), t)
+def samplePlacement(robot, q, cube):
+    while True:
+        cube_placement = randomCubePlacement()
         _, success = computeqgrasppose(robot, q, cube, cube_placement, viz)
         if success:
             return cube_placement
@@ -74,7 +74,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=500
+        self, robot, cube, start, goal, samples, q0, qe, step_size=0.05, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
@@ -127,9 +127,7 @@ class RRTConnect:
 
     def plan(self):
         for _ in range(self.iterations):
-            sample = samplePlacement(
-                self.robot, self.q, self.cube
-            )  # np.random.choice(self.samples)
+            sample = randomCubePlacement()
             # Extend the tree from start towards the sample
             nearest_node_start = self.nearest_neighbor(self.start_tree, sample)
             new_state_start, pose, success = self.new_state(nearest_node_start, sample)
