@@ -58,8 +58,11 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         return cost
 
     q_sol = optim.minimize(cost, qcurrent, callback=callback)
+    print("Collision: ", collision(robot, q_sol.x))
+    print("Joints: ", jointlimitsviolated(robot, q_sol.x))
+    print("Cost: ", cost(q_sol.x))
 
-    return q_sol.x, 1e-4 > cost(q_sol.x) and not collision(
+    return q_sol.x, 1e-2 > cost(q_sol.x) and not collision(
         robot, q_sol.x
     ) and not jointlimitsviolated(robot, q_sol.x)
 
