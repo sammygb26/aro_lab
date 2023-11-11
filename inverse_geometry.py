@@ -41,15 +41,18 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
 
+        def offset(oMf, x, y, z):
+            oMf.translation = (oMf @ np.array([x, y, z, 1.0]))[:3]
+
         oM_lh = robot.data.oMf[left_id]
         oM_lc = getcubeplacement(cube, LEFT_HOOK)
+        offset(oM_lc, 0.0, 0.001, 0.0)
 
         oM_rh = robot.data.oMf[right_id - 1]
         oM_rc = getcubeplacement(cube, RIGHT_HOOK)
+        offset(oM_rc, 0.0, 0.001, 0.0)
+
         oM_rc = oM_rh @ inv(robot.data.oMf[right_id]) @ oM_rc
-
-
-
 
         l_nu = pin.log(oM_lc) - pin.log(oM_lh)
         r_nu = pin.log(oM_rc) - pin.log(oM_rh) 
