@@ -8,6 +8,7 @@ Created on Wed Sep  6 15:32:51 2023
 
 import pinocchio as pin
 import numpy as np
+from pinocchio.utils import rotate
 from numpy.linalg import pinv, inv, norm, svd, eig
 from tools import collision, getcubeplacement, setcubeplacement, projecttojointlimits
 from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
@@ -17,12 +18,23 @@ from tools import setcubeplacement, collision, jointlimitsviolated, projecttojoi
 from pinocchio import Quaternion, SE3
 
 from scipy.optimize import fmin_bfgs
+from util import *
 import time
 
+
+#def check_cube_collision(robot, cube, cubeplacement, viz):
+#    setcubeplacement(robot, cube, cubeplacement)
+#    col = pin.computeCollisions(cube.collision_model, cube.collision_data, False)
+#    if viz != None:
+#        log_cube(cubeplacement, not col, viz) 
+    
 
 def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=None):
     """Return a collision free configuration grasping a cube at a specific location and a success flag"""
     setcubeplacement(robot, cube, cubetarget)
+
+    if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
+        return qcurrent, False
 
     left_id = robot.model.getFrameId(LEFT_HAND)
     right_id = robot.model.getFrameId(RIGHT_HAND)

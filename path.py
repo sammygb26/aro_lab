@@ -16,6 +16,8 @@ from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
 import time
 from inverse_geometry import computeqgrasppose
+from util import log_cube
+from pinocchio import SE3
 
 
 # returns a collision free path from qinit to qgoal under grasping constraints
@@ -47,13 +49,6 @@ def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
         samples[i] = placement
     return samples
 
-n_boxes = 0
-def log_cube(cubePlacement, success):
-    global n_boxes
-    name = f"log_box{n_boxes}"
-    viz.addBox(name, [0.1, 0.1, 0.1], [0.0, 1.0, 0.0] if success else [1.0, 0.0, 0.0])
-    viz.applyConfiguration(f"log_box{n_boxes}", cubePlacement)
-
 def randomCubePlacement():
     minimums = np.array([0.2, -0.8, 1.0])
     maximums = np.array([0.8, 0.8, 2.5])
@@ -83,7 +78,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.05, iterations=500
+        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
@@ -99,14 +94,15 @@ class RRTConnect:
         nearest_node = tree[np.argmin(distances)]
         return nearest_node
 
-    def calcDist(self, target, sample):
+    def calcDist(self, target : Node, sample : Node):
         distance = np.linalg.norm(
             sample.translation - target.translation
         )  # np.array([np.linalg.norm(pin.log(sample * np.linalg.inv(node.state))) for node in tree])
         return distance
     
-    def new_config(self, c_target, c_near):
-        if self.calcDist(c_near, c_target) < self.step_size:
+    def new_config(self, c_target : SE3, n_near : Node):
+        c_near = n_near.state
+        if self.calcDist(n_near.state, c_target) < self.step_size:
             c_new = c_target
         else:
             move_dir = c_target.translation - c_near.translation
@@ -116,19 +112,18 @@ class RRTConnect:
 
         q, success = computeqgrasppose(
             self.robot, 
-            self.q, 
+            n_near.pose, 
             self.cube, 
             c_new)
         
-        log_cube(c_new, success)
+        log_cube(c_new, success, viz)
         
         return q, c_new, success
 
     def extend(self, tree, c_target):
         n_near = self.nearest_neighbor(tree, c_target)
 
-        c_near = n_near.state
-        q, c_new, success = self.new_config(c_target, c_near)
+        q, c_new, success = self.new_config(c_target, n_near)
         if not success:
             return TRAPPED, None
         
