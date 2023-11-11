@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from bezier import Bezier
 
-P = np.array([[0,0], [0.5, 1], [1,1], [1, 0], [2, 1]])
+P = np.array([[0,0], [0.5, 1], [1,-10]])
 
 bez = Bezier(P, 0.0, 1.0)
 T = np.linspace(0, 1, 1000)

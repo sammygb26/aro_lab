@@ -49,7 +49,8 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     vq = np.array([10.0])
 
     count = 0
-    while norm(vq) > 1e-2:
+    eff_back_off = 0.0001
+    while norm(vq) > 1e-2 and count < 1000:
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
 
@@ -58,11 +59,11 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
 
         oM_lh = robot.data.oMf[left_id]
         oM_lc = getcubeplacement(cube, LEFT_HOOK)
-        offset(oM_lc, 0.0, 0.001, 0.0)
+        offset(oM_lc, 0.0, eff_back_off, 0.0)
 
         oM_rh = robot.data.oMf[right_id - 1]
         oM_rc = getcubeplacement(cube, RIGHT_HOOK)
-        offset(oM_rc, 0.0, 0.001, 0.0)
+        offset(oM_rc, 0.0, eff_back_off, 0.0)
 
         oM_rc = oM_rh @ inv(robot.data.oMf[right_id]) @ oM_rc
 
@@ -73,8 +74,8 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         o_Jright = pin.computeFrameJacobian(robot.model, robot.data, q, right_id)
 
         vq = pinv(o_Jright) @ r_nu
-        Pl = np.eye(robot.nv) - (pinv(o_Jright) @ o_Jright)
-        vq += pinv(o_Jleft @ Pl) @ (l_nu - o_Jleft @ vq)
+        Pr = np.eye(robot.nv) - (pinv(o_Jright) @ o_Jright)
+        vq += pinv(o_Jleft @ Pr) @ (l_nu - o_Jleft @ vq)
 
         q = projecttojointlimits(robot, pin.integrate(robot.model, q, vq * dt))
 
