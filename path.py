@@ -83,7 +83,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.005, iterations=500
+        self, robot, cube, start, goal, samples, q0, qe, step_size=0.05, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
@@ -149,6 +149,7 @@ class RRTConnect:
     def plan(self):
         tree_a = self.start_tree
         tree_b = self.goal_tree
+        switched = False
 
         for _ in range(self.iterations):
             c_rand = randomCubePlacement()
@@ -157,11 +158,15 @@ class RRTConnect:
             if not (S_e == TRAPPED):
                 S_c, n_new_c = self.connect(tree_b, n_new_e.state)
                 if S_c == REACHED:
-                    return True, self.extract_path(n_new_c, n_new_e)
+                    if switched:
+                        return True, self.extract_path(n_new_c, n_new_e)
+                    else:
+                        return True, self.extract_path(n_new_e, n_new_c)
                 
             tmp = tree_a
             tree_a = tree_b
             tree_b = tmp
+            switched = not switched 
 
         return False, []
 

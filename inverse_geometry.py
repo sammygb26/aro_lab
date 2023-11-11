@@ -13,7 +13,7 @@ from tools import collision, getcubeplacement, setcubeplacement, projecttojointl
 from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
 from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
-from tools import setcubeplacement, collision, jointlimitscost, jointlimitsviolated 
+from tools import setcubeplacement, collision, jointlimitsviolated, projecttojointlimits
 from pinocchio import Quaternion, SE3
 
 from scipy.optimize import fmin_bfgs
@@ -64,7 +64,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         Pl = np.eye(robot.nv) - (pinv(o_Jright) @ o_Jright)
         vq += pinv(o_Jleft @ Pl) @ (l_nu - o_Jleft @ vq)
 
-        q = pin.integrate(robot.model, q, vq * dt)
+        q = projecttojointlimits(robot, pin.integrate(robot.model, q, vq * dt))
 
         if count % 1 == 0:
             callback(q)
