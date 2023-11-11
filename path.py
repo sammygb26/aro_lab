@@ -116,8 +116,6 @@ class RRTConnect:
             self.cube, 
             c_new)
         
-        log_cube(c_new, success, viz)
-        
         return q, c_new, success
 
     def extend(self, tree, c_target):
