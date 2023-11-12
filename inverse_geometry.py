@@ -12,9 +12,9 @@ from pinocchio.utils import rotate
 from numpy.linalg import pinv, inv, norm, svd, eig
 from tools import collision, getcubeplacement, setcubeplacement, projecttojointlimits
 from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
-from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
+from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, OBSTACLE_PLACEMENT
 
-from tools import setcubeplacement, collision, jointlimitsviolated, projecttojointlimits
+from tools import setcubeplacement, collision, jointlimitsviolated, projecttojointlimits, distanceToObstacle
 from pinocchio import Quaternion, SE3
 
 from scipy.optimize import fmin_bfgs
@@ -27,13 +27,16 @@ import time
 #    col = pin.computeCollisions(cube.collision_model, cube.collision_data, False)
 #    if viz != None:
 #        log_cube(cubeplacement, not col, viz) 
+
+def cube_distance_to_obsticle(cubetrans):
+    return norm(cubetrans.translation - OBSTACLE_PLACEMENT.translation)
     
 
 def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=None):
     """Return a collision free configuration grasping a cube at a specific location and a success flag"""
     setcubeplacement(robot, cube, cubetarget)
 
-    if pin.computeCollisions(cube.collision_model, cube.collision_data, False):
+    if pin.computeCollisions(cube.collision_model, cube.collision_data, False) or cube_distance_to_obsticle(cubetarget) < 0.2:
         return qcurrent, False
 
     left_id = robot.model.getFrameId(LEFT_HAND)
@@ -44,13 +47,14 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
             viz.display(q)
 
     q = qcurrent.copy()
-    dt = 0.1 
+    dt = 0.25
 
     vq = np.array([10.0])
 
     count = 0
-    eff_back_off = 0.0001
-    while norm(vq) > 1e-2 and count < 1000:
+    eff_back_off = -0.0001
+    cost = 10
+    while (cost > 0.01 or norm(vq) > 0.1) and count < 1000:
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
 
@@ -79,20 +83,20 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
 
         q = projecttojointlimits(robot, pin.integrate(robot.model, q, vq * dt))
 
+        cost = norm(l_nu) + norm(r_nu)
+
         if count % 1 == 0:
             callback(q)
         count += 1
 
     q_sol = q
 
-    cost = norm(l_nu) + norm(r_nu)
+    setcubeplacement(robot, cube, SE3(rotate('z', 0),np.array([10,10,0])))
 
     print("Collision: ", collision(robot, q_sol))
     print("Joints: ", jointlimitsviolated(robot, q_sol))
-    print("Cost: ", cost)
 
     valid_config = (
-        1e-1 >= cost and 
         not collision(robot, q_sol) 
         and not jointlimitsviolated(robot, q_sol))
 

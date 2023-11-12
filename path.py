@@ -23,7 +23,6 @@ from pinocchio import SE3
 # returns a collision free path from qinit to qgoal under grasping constraints
 # the path is expressed as a list of configurations
 def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
-    sampleNo = 100
     print("Starting sampling")
     samples = []  # sampleCubePlacements(robot, qinit, cube, sampleNo, viz=None)
     print("Starting RRT")
@@ -78,7 +77,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=500
+        self, robot, cube, start, goal, samples, q0, qe, step_size=0.005, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]

@@ -19,14 +19,15 @@ from scipy.optimize import fmin_bfgs
 
 
 # in my solution these gains were good enough for all joints but you might want to tune this.
-Kp = 1200  # proportional gain (P of PD)
+Kp = 4000  # proportional gain (P of PD)
 Kd = 2 * np.sqrt(Kp)
 
 CUBE_PLACEMENT_UP = pin.SE3(rotate('z', 0.),np.array([0.33, -0.3, 1.13]))
 
 
 graspForce = 100
-graspTorque = 1
+cubeweight = 100
+graspTorque = 2
 
 def getGraspForces(sim, robot):
     fext = [pin.Force.Zero()] * (robot.nv + 1)
@@ -34,8 +35,8 @@ def getGraspForces(sim, robot):
     lid = sim.bulletCtrlJointsInPinOrder.index(sim.bullet_names2indices['LARM_EFF'] - 1) + 1
     rid = sim.bulletCtrlJointsInPinOrder.index(sim.bullet_names2indices['RARM_EFF'] - 1) + 1
 
-    fext[lid] = pin.Force(np.array([-graspForce, 0, 0, 0, 0, graspTorque]))
-    fext[rid] = pin.Force(np.array([-graspForce, 0, 0, 0, 0, -graspTorque]))
+    fext[lid] = pin.Force(np.array([-graspForce, 0, -cubeweight, 0, 0, graspTorque]))
+    fext[rid] = pin.Force(np.array([-graspForce, 0, -cubeweight, 0, 0, -graspTorque]))
 
     fext_wrapper = pin.StdVec_Force()
     for ext_force in fext:
@@ -90,19 +91,23 @@ if __name__ == "__main__":
 
         p0 = np.array(path)
         steps = 20
-        npoints = 3
+        npoints = 30
         p0 = np.array([ ref_q(t) for t in np.linspace(0,1,npoints)])
 
         def np_to_path(p):
             p = np.reshape(p, p0.shape)
             return q0, q0, q0, *[p[i,:] for i in range(npoints)], q1, q1, q1
-
-        def cost(p):
-            ret = 0
-
+        
+        def np_to_traj(p):
             q_of_t = Bezier(np_to_path(p), t_max=1)
             vq_of_t = q_of_t.derivative(1)
             vvq_of_t = vq_of_t.derivative(1)
+            return q_of_t, vq_of_t, vvq_of_t
+        
+        def cost(p):
+            ret = 0
+
+            q_of_t, vq_of_t, vvq_of_t = np_to_traj(p)
 
             dt = 1 / steps
             prev_loss = 0
@@ -115,7 +120,8 @@ if __name__ == "__main__":
             return ret
         
 
-        p_sol = fmin_bfgs(cost, p0)
+        #p_sol = fmin_bfgs(cost, p0)
+        p_sol = p0
 
         q_of_t = Bezier(np_to_path(p_sol), t_max=T)
         vq_of_t = q_of_t.derivative(1)
