@@ -16,12 +16,13 @@ from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET
 
 import time
 from inverse_geometry import computeqgrasppose
+from util import log_cube
+from pinocchio import SE3
 
 
 # returns a collision free path from qinit to qgoal under grasping constraints
 # the path is expressed as a list of configurations
 def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
-    sampleNo = 100
     print("Starting sampling")
     print("Starting RRT")
     RRT = RRTConnect(robot, cube, cubeplacementq0, cubeplacementqgoal, qinit, qgoal)
@@ -92,14 +93,15 @@ class RRTConnect:
         nearest_node = tree[np.argmin(distances)]
         return nearest_node
 
-    def calcDist(self, target, sample):
+    def calcDist(self, target: Node, sample: Node):
         distance = np.linalg.norm(
             sample.translation - target.translation
         )  # np.array([np.linalg.norm(pin.log(sample * np.linalg.inv(node.state))) for node in tree])
         return distance
 
-    def new_config(self, c_target, c_near):
-        if self.calcDist(c_near, c_target) < self.step_size:
+    def new_config(self, c_target: SE3, n_near: Node):
+        c_near = n_near.state
+        if self.calcDist(n_near.state, c_target) < self.step_size:
             c_new = c_target
         else:
             move_dir = c_target.translation - c_near.translation
@@ -107,17 +109,14 @@ class RRTConnect:
             step = move_dir * self.step_size
             c_new = pin.SE3(rotate("z", 0), c_near.translation + step)
 
-        q, success = computeqgrasppose(self.robot, self.q, self.cube, c_new)
-
-        log_cube(c_new, success)
+        q, success = computeqgrasppose(self.robot, n_near.pose, self.cube, c_new)
 
         return q, c_new, success
 
     def extend(self, tree, c_target):
         n_near = self.nearest_neighbor(tree, c_target)
 
-        c_near = n_near.state
-        q, c_new, success = self.new_config(c_target, c_near)
+        q, c_new, success = self.new_config(c_target, n_near)
         if not success:
             return TRAPPED, None
 
@@ -138,6 +137,7 @@ class RRTConnect:
     def plan(self):
         tree_a = self.start_tree
         tree_b = self.goal_tree
+        switched = False
 
         for _ in range(self.iterations):
             c_rand = randomCubePlacement()
@@ -146,11 +146,15 @@ class RRTConnect:
             if not (S_e == TRAPPED):
                 S_c, n_new_c = self.connect(tree_b, n_new_e.state)
                 if S_c == REACHED:
-                    return True, self.extract_path(n_new_c, n_new_e)
+                    if switched:
+                        return True, self.extract_path(n_new_c, n_new_e)
+                    else:
+                        return True, self.extract_path(n_new_e, n_new_c)
 
             tmp = tree_a
             tree_a = tree_b
             tree_b = tmp
+            switched = not switched
 
         return False, []
 
