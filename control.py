@@ -104,7 +104,7 @@ if __name__ == "__main__":
     def oMf_to_quat_trans(oMf):
         return Quaternion(oMf.rotation), oMf.translation
 
-    def maketraj(q0, q1, T): 
+    def maketraj(q0, q1, max_acc): 
         p0 = np.array(path)
         npoints = min(6, len(path))
         ntest = 10
@@ -201,7 +201,14 @@ if __name__ == "__main__":
             print("Cost: ", cost(p))
         
 
-        p_sol = fmin_bfgs(cost, p0, callback=callback)
+        p_sol = fmin_bfgs(cost, p0, callback=callback, gtol=5e-3)
+
+        q_of_t = Bezier(np_to_path(p_sol), t_max=1)
+        vq_of_t = q_of_t.derivative(1)
+        vvq_of_t = vq_of_t.derivative(1)
+
+        max_vvq = np.max(np.abs(vvq_of_t.control_points_))
+        T = 1 / np.sqrt(max_acc / max_vvq)
 
         q_of_t = Bezier(np_to_path(p_sol), t_max=T)
         vq_of_t = q_of_t.derivative(1)
@@ -210,17 +217,16 @@ if __name__ == "__main__":
         return q_of_t, vq_of_t, vvq_of_t
 
 
-    total_time = 5.0
-    trajs = maketraj(q0, qe, total_time)
+
+    trajs = maketraj(q0, qe, 2)
+    T = trajs[0].T_max_
 
     if True:
-        for t in np.linspace(0, total_time, 100):
+        for t in np.linspace(0, T, 100):
             viz.display(trajs[0](t)) 
-        
-
 
     tcur = 0.0
 
-    while tcur < total_time:
+    while tcur < T: 
         rununtil(controllaw, DT, sim, robot, trajs, tcur, cube)
         tcur += DT
