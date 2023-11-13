@@ -36,8 +36,8 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     """Return a collision free configuration grasping a cube at a specific location and a success flag"""
     setcubeplacement(robot, cube, cubetarget)
 
-    min_distance = 0.2 + (cubetarget.translation[2] - CUBE_PLACEMENT.translation[2]) * 0.075
-    if pin.computeCollisions(cube.collision_model, cube.collision_data, False) or cube_distance_to_obsticle(cubetarget) < min_distance:
+    min_distance = 0.2 #+ (cubetarget.translation[2] - CUBE_PLACEMENT.translation[2]) * 0.075
+    if pin.computeCollisions(cube.collision_model, cube.collision_data, False): #or cube_distance_to_obsticle(cubetarget) < min_distance:
         return qcurrent, False
 
     left_id = robot.model.getFrameId(LEFT_HAND)
@@ -55,7 +55,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     count = 0
     eff_back_off = -0.0001
     cost = 10
-    while (cost > 0.01 or norm(vq) > 0.1) and count < 1000:
+    while (cost > 0.01 or norm(vq) > 0.1) and count < 2058:
         pin.framesForwardKinematics(robot.model,robot.data,q)
         pin.computeJointJacobians(robot.model,robot.data,q)
 
@@ -92,10 +92,8 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
 
     q_sol = q
 
+    # Make sure cube is ignored in collisions
     setcubeplacement(robot, cube, SE3(rotate('z', 0),np.array([10,10,0])))
-
-    print("Collision: ", collision(robot, q_sol))
-    print("Joints: ", jointlimitsviolated(robot, q_sol))
 
     valid_config = (
         not collision(robot, q_sol) 
