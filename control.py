@@ -19,7 +19,9 @@ from scipy.optimize import fmin_bfgs
 
 
 # in my solution these gains were good enough for all joints but you might want to tune this.
-Kp = 4000  # proportional gain (P of PD)
+Kp = 1200  # proportional gain (P of PD)
+Ki = 24
+i = 0
 Kd = 2 * np.sqrt(Kp)
 
 CUBE_PLACEMENT_UP = pin.SE3(rotate('z', 0.),np.array([0.33, -0.3, 1.13]))
@@ -27,7 +29,7 @@ CUBE_PLACEMENT_UP = pin.SE3(rotate('z', 0.),np.array([0.33, -0.3, 1.13]))
 
 graspForce = 100
 cubeweight = 100
-graspTorque = 2
+graspTorque = 1
 
 def getGraspForces(sim, robot):
     fext = [pin.Force.Zero()] * (robot.nv + 1)
@@ -47,12 +49,17 @@ def getGraspForces(sim, robot):
 
 
 def controllaw(sim, robot, trajs, tcurrent, cube):
+    global i
     q, vq = sim.getpybulletstate()
     q_of_t, vq_of_t, vvq_of_t = trajs
 
+    # PID
     e_q = q_of_t(tcurrent) - q
+    i += e_q * DT
     e_qd = vq_of_t(tcurrent) - vq
-    dvq = Kp * e_q + Kd * e_qd + vvq_of_t(tcurrent)
+    dvq = Kp * e_q + Kd * e_qd + i * Ki + vvq_of_t(tcurrent)
+
+    # Add grasp force
     graps_ext = getGraspForces(sim, robot) 
 
     b = pin.rnea(robot.model, robot.data, q, vq, dvq, graps_ext)
