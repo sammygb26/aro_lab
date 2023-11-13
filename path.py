@@ -23,11 +23,8 @@ from inverse_geometry import computeqgrasppose
 def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     sampleNo = 100
     print("Starting sampling")
-    samples = []  # sampleCubePlacements(robot, qinit, cube, sampleNo, viz=None)
     print("Starting RRT")
-    RRT = RRTConnect(
-        robot, cube, cubeplacementq0, cubeplacementqgoal, samples, qinit, qgoal
-    )
+    RRT = RRTConnect(robot, cube, cubeplacementq0, cubeplacementqgoal, qinit, qgoal)
     flag, (path, configurations) = RRT.plan()
     if flag == False:
         print(":sad_face:")
@@ -38,21 +35,16 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
 
     return configurations
 
-def sampleCubePlacements(robot, q, cube, noSamples, viz=None):
-    # Randomly sample cube placements
-    samples = np.empty(noSamples, dtype=pin.SE3)
-    for i in range(noSamples):
-        print(i)
-        placement = samplePlacement(robot, q, cube, viz)
-        samples[i] = placement
-    return samples
 
 n_boxes = 0
+
+
 def log_cube(cubePlacement, success):
     global n_boxes
     name = f"log_box{n_boxes}"
     viz.addBox(name, [0.1, 0.1, 0.1], [0.0, 1.0, 0.0] if success else [1.0, 0.0, 0.0])
     viz.applyConfiguration(f"log_box{n_boxes}", cubePlacement)
+
 
 def randomCubePlacement():
     minimums = np.array([0.2, -0.8, 1.0])
@@ -60,6 +52,7 @@ def randomCubePlacement():
     t = np.random.rand(3)
     t = (t * (maximums - minimums)) + minimums
     return pin.SE3(rotate("z", 0), t)
+
 
 def samplePlacement(robot, q, cube):
     while True:
@@ -74,6 +67,7 @@ TRAPPED = 0
 ADVANCED = 1
 REACHED = 2
 
+
 class Node:
     def __init__(self, state, pose, parent=None):
         self.state = state
@@ -83,11 +77,10 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.005, iterations=500
+        self, robot, cube, start, goal, q0, qe, step_size=0.005, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
-        self.samples = samples
         self.step_size = step_size
         self.iterations = iterations
         self.robot = robot
@@ -104,7 +97,7 @@ class RRTConnect:
             sample.translation - target.translation
         )  # np.array([np.linalg.norm(pin.log(sample * np.linalg.inv(node.state))) for node in tree])
         return distance
-    
+
     def new_config(self, c_target, c_near):
         if self.calcDist(c_near, c_target) < self.step_size:
             c_new = c_target
@@ -114,14 +107,10 @@ class RRTConnect:
             step = move_dir * self.step_size
             c_new = pin.SE3(rotate("z", 0), c_near.translation + step)
 
-        q, success = computeqgrasppose(
-            self.robot, 
-            self.q, 
-            self.cube, 
-            c_new)
-        
+        q, success = computeqgrasppose(self.robot, self.q, self.cube, c_new)
+
         log_cube(c_new, success)
-        
+
         return q, c_new, success
 
     def extend(self, tree, c_target):
@@ -131,15 +120,15 @@ class RRTConnect:
         q, c_new, success = self.new_config(c_target, c_near)
         if not success:
             return TRAPPED, None
-        
+
         n_new = Node(c_new, q, n_near)
-        tree.append(n_new) 
-        
+        tree.append(n_new)
+
         if c_new == c_target:
             return REACHED, n_new
         else:
             return ADVANCED, n_new
-        
+
     def connect(self, tree, c_target):
         S = ADVANCED
         while S == ADVANCED:
@@ -158,7 +147,7 @@ class RRTConnect:
                 S_c, n_new_c = self.connect(tree_b, n_new_e.state)
                 if S_c == REACHED:
                     return True, self.extract_path(n_new_c, n_new_e)
-                
+
             tmp = tree_a
             tree_a = tree_b
             tree_b = tmp
@@ -186,6 +175,12 @@ def displaypath(robot, path, dt, viz):
     for q in path:
         viz.display(q)
         time.sleep(dt)
+
+
+def testGrasp():
+    position = pin.SE3(rotate("z", 0), np.array([0.36457381, -0.27745001, 1.01791517]))
+    q, success = computeqgrasppose(robot, qe, cube, position, viz)
+    print(q, success)
 
 
 if __name__ == "__main__":
