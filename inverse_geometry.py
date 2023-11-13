@@ -36,7 +36,8 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     """Return a collision free configuration grasping a cube at a specific location and a success flag"""
     setcubeplacement(robot, cube, cubetarget)
 
-    if pin.computeCollisions(cube.collision_model, cube.collision_data, False) or cube_distance_to_obsticle(cubetarget) < 0.2:
+    min_distance = 0.2 + (cubetarget.translation[2] - CUBE_PLACEMENT.translation[2]) * 0.075
+    if pin.computeCollisions(cube.collision_model, cube.collision_data, False) or cube_distance_to_obsticle(cubetarget) < min_distance:
         return qcurrent, False
 
     left_id = robot.model.getFrameId(LEFT_HAND)

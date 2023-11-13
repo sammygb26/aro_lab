@@ -78,7 +78,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, q0, qe, step_size=0.005, iterations=500
+        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]

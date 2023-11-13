@@ -19,16 +19,16 @@ from scipy.optimize import fmin_bfgs
 
 
 # in my solution these gains were good enough for all joints but you might want to tune this.
-Kp = 1200  # proportional gain (P of PD)
-Ki = 24
+Kp = 1000  # proportional gain (P of PD)
+Ki = 2400
 i = 0
-Kd = 2 * np.sqrt(Kp)
+Kd = 1 * np.sqrt(Kp)
 
 CUBE_PLACEMENT_UP = pin.SE3(rotate('z', 0.),np.array([0.33, -0.3, 1.13]))
 
 
 graspForce = 100
-cubeweight = 100
+cubeweight = 150
 graspTorque = 1
 
 def getGraspForces(sim, robot):
@@ -57,15 +57,15 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
     e_q = q_of_t(tcurrent) - q
     i += e_q * DT
     e_qd = vq_of_t(tcurrent) - vq
-    dvq = Kp * e_q + Kd * e_qd + i * Ki + vvq_of_t(tcurrent)
+    dvq = Kp * e_q + Kd * e_qd + i * Ki  + vvq_of_t(tcurrent)
 
     # Add grasp force
     graps_ext = getGraspForces(sim, robot) 
 
-    b = pin.rnea(robot.model, robot.data, q, vq, dvq, graps_ext)
+    h = pin.rnea(robot.model, robot.data, q, vq, dvq, graps_ext)
     M = pin.crba(robot.model, robot.data, q)
 
-    torques = M @ dvq + b
+    torques = M @ dvq + h
 
     sim.step(torques)
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         return q_of_t, vq_of_t, vvq_of_t
 
     # TODO this is just a random trajectory, you need to do this yourself
-    total_time = 10.0
+    total_time = 5.0
     trajs = maketraj(q0, qe, total_time)
 
     from tools import setupwithmeshcat
