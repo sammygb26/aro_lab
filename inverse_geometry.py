@@ -55,7 +55,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     speedup = 100
     count = 0
 
-    while cost > 0.001 and count < 1000:
+    while cost > 0.0001 and count < 1000:
         pin.framesForwardKinematics(robot.model, robot.data, q)
         pin.computeJointJacobians(robot.model, robot.data, q)
 
@@ -90,7 +90,11 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     )
     setcubeplacement(robot, cube, cubetarget)
 
-    valid_config = not collision(robot, q_sol) and not jointlimitsviolated(robot, q_sol)
+    valid_config = (
+        not collision(robot, q_sol)
+        and not jointlimitsviolated(robot, q_sol)
+        and cost < 0.001
+    )
 
     return q_sol, valid_config
 
