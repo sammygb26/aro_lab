@@ -78,7 +78,7 @@ class Node:
 
 class RRTConnect:
     def __init__(
-        self, robot, cube, start, goal, samples, q0, qe, step_size=0.025, iterations=500
+        self, robot, cube, start, goal, q0, qe, step_size=0.025, iterations=500
     ):
         self.start_tree = [Node(start, q0)]
         self.goal_tree = [Node(goal, qe)]
@@ -170,8 +170,7 @@ class RRTConnect:
             path.append(node_goal.state)
             configurations.append(node_goal.pose)
             node_goal = node_goal.parent
-
-        print(path, configurations)
+        setcubeplacement(self.robot, self.cube, CUBE_PLACEMENT)
         return path, configurations
 
 
