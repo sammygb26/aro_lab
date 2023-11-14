@@ -8,98 +8,92 @@ Created on Wed Sep  6 15:32:51 2023
 
 import pinocchio as pin
 import numpy as np
-from pinocchio.utils import rotate
 from numpy.linalg import pinv, inv, norm, svd, eig
-from tools import collision, getcubeplacement, setcubeplacement, projecttojointlimits
-from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON
+from tools import (
+    collision,
+    getcubeplacement,
+    setcubeplacement,
+    projecttojointlimits,
+    jointlimitsviolated,
+)
+from config import LEFT_HOOK, RIGHT_HOOK, LEFT_HAND, RIGHT_HAND, EPSILON, DT
 from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, OBSTACLE_PLACEMENT
-
-from tools import setcubeplacement, collision, jointlimitsviolated, projecttojointlimits, distanceToObstacle
-from pinocchio import Quaternion, SE3
 
 from scipy.optimize import fmin_bfgs
 from util import *
 import time
 
 
-#def check_cube_collision(robot, cube, cubeplacement, viz):
-#    setcubeplacement(robot, cube, cubeplacement)
-#    col = pin.computeCollisions(cube.collision_model, cube.collision_data, False)
-#    if viz != None:
-#        log_cube(cubeplacement, not col, viz) 
-
-def cube_distance_to_obsticle(cubetrans):
-    return norm(cubetrans.translation - OBSTACLE_PLACEMENT.translation)
-    
-
 def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=None):
     """Return a collision free configuration grasping a cube at a specific location and a success flag"""
     setcubeplacement(robot, cube, cubetarget)
-
-    min_distance = 0.2 #+ (cubetarget.translation[2] - CUBE_PLACEMENT.translation[2]) * 0.075
-    if pin.computeCollisions(cube.collision_model, cube.collision_data, False): #or cube_distance_to_obsticle(cubetarget) < min_distance:
-        return qcurrent, False
+    q = qcurrent.copy()
 
     left_id = robot.model.getFrameId(LEFT_HAND)
     right_id = robot.model.getFrameId(RIGHT_HAND)
 
-    def callback(q):
-        if viz:
-            viz.display(q)
+    oM_lc = getcubeplacement(cube, LEFT_HOOK)
+    # Add a small offset to avoid singularities
+    xOffset = 0
+    yOffset = 0
+    zOffset = 0.01
+    oM_lc = pin.SE3(
+        oM_lc
+        + np.array(
+            [[0, 0, 0, xOffset], [0, 0, 0, yOffset], [0, 0, 0, zOffset], [0, 0, 0, 0]]
+        )
+    )
+    oM_rc = getcubeplacement(cube, RIGHT_HOOK)
+    oM_rc = pin.SE3(
+        oM_rc
+        + np.array(
+            [[0, 0, 0, xOffset], [0, 0, 0, -yOffset], [0, 0, 0, zOffset], [0, 0, 0, 0]]
+        )
+    )
 
-    q = qcurrent.copy()
-    dt = 0.25
-
-    vq = np.array([10.0])
-
-    count = 0
-    eff_back_off = -0.0001
     cost = 10
-    while (cost > 0.01 or norm(vq) > 0.1) and count < 2058:
-        pin.framesForwardKinematics(robot.model,robot.data,q)
-        pin.computeJointJacobians(robot.model,robot.data,q)
+    speedup = 100
+    count = 0
 
-        def offset(oMf, x, y, z):
-            oMf.translation = (oMf @ np.array([x, y, z, 1.0]))[:3]
+    while cost > 0.001 and count < 1000:
+        pin.framesForwardKinematics(robot.model, robot.data, q)
+        pin.computeJointJacobians(robot.model, robot.data, q)
 
         oM_lh = robot.data.oMf[left_id]
-        oM_lc = getcubeplacement(cube, LEFT_HOOK)
-        offset(oM_lc, 0.0, eff_back_off, 0.0)
+        o_Jleft = pin.computeFrameJacobian(
+            robot.model, robot.data, q, left_id, pin.LOCAL
+        )
 
-        oM_rh = robot.data.oMf[right_id - 1]
-        oM_rc = getcubeplacement(cube, RIGHT_HOOK)
-        offset(oM_rc, 0.0, eff_back_off, 0.0)
+        oM_rh = robot.data.oMf[right_id]
+        o_Jright = pin.computeFrameJacobian(
+            robot.model, robot.data, q, right_id, pin.LOCAL
+        )
 
-        oM_rc = oM_rh @ inv(robot.data.oMf[right_id]) @ oM_rc
+        lh_nu = pin.log(oM_lh.inverse() * oM_lc).vector
+        rh_nu = pin.log(oM_rh.inverse() * oM_rc).vector
 
-        l_nu = pin.log(oM_lc) - pin.log(oM_lh)
-        r_nu = pin.log(oM_rc) - pin.log(oM_rh) 
+        vq = pinv(o_Jright) @ rh_nu
+        Pr = np.eye(robot.nv) - pinv(o_Jright) @ o_Jright
+        vq += pinv(o_Jleft @ Pr) @ (lh_nu - o_Jleft @ vq)
 
-        o_Jleft = pin.computeFrameJacobian(robot.model, robot.data, q, left_id)
-        o_Jright = pin.computeFrameJacobian(robot.model, robot.data, q, right_id)
+        q = pin.integrate(robot.model, q, vq * DT * speedup)
+        cost = norm(lh_nu) + norm(rh_nu)
+        if viz:
+            viz.display(q)
+            time.sleep(0.001)
 
-        vq = pinv(o_Jright) @ r_nu
-        Pr = np.eye(robot.nv) - (pinv(o_Jright) @ o_Jright)
-        vq += pinv(o_Jleft @ Pr) @ (l_nu - o_Jleft @ vq)
-
-        q = projecttojointlimits(robot, pin.integrate(robot.model, q, vq * dt))
-
-        cost = norm(l_nu) + norm(r_nu)
-
-        if count % 1 == 0:
-            callback(q)
         count += 1
 
-    q_sol = q
-
     # Make sure cube is ignored in collisions
-    setcubeplacement(robot, cube, SE3(rotate('z', 0),np.array([10,10,0])))
+    q_sol = projecttojointlimits(
+        robot, pin.integrate(robot.model, q, vq * DT * speedup)
+    )
+    setcubeplacement(robot, cube, cubetarget)
 
-    valid_config = (
-        not collision(robot, q_sol) 
-        and not jointlimitsviolated(robot, q_sol))
+    valid_config = not collision(robot, q_sol) and not jointlimitsviolated(robot, q_sol)
 
     return q_sol, valid_config
+
 
 if __name__ == "__main__":
     from tools import setupwithmeshcat
