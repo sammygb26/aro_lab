@@ -33,7 +33,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     right_id = robot.model.getFrameId(RIGHT_HAND)
 
     oM_lc = getcubeplacement(cube, LEFT_HOOK)
-    # Add a small offset to avoid singularities
+    # Add an offset
     xOffset = 0
     yOffset = 0
     zOffset = 0.01
@@ -77,6 +77,8 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         vq += pinv(o_Jleft @ Pr) @ (lh_nu - o_Jleft @ vq)
 
         q = pin.integrate(robot.model, q, vq * DT * speedup)
+
+        q = projecttojointlimits(robot, q)
         cost = norm(lh_nu) + norm(rh_nu)
         if viz:
             viz.display(q)
@@ -85,18 +87,14 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         count += 1
 
     # Make sure cube is ignored in collisions
-    q_sol = projecttojointlimits(
-        robot, pin.integrate(robot.model, q, vq * DT * speedup)
-    )
+
     setcubeplacement(robot, cube, cubetarget)
 
     valid_config = (
-        not collision(robot, q_sol)
-        and not jointlimitsviolated(robot, q_sol)
-        and cost < 0.001
+        not collision(robot, q) and not jointlimitsviolated(robot, q) and cost < 0.001
     )
 
-    return q_sol, valid_config
+    return q, valid_config
 
 
 if __name__ == "__main__":
