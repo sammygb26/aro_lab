@@ -33,23 +33,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     right_id = robot.model.getFrameId(RIGHT_HAND)
 
     oM_lc = getcubeplacement(cube, LEFT_HOOK)
-    # Add an offset
-    xOffset = 0
-    yOffset = 0
-    zOffset = 0.01
-    oM_lc = pin.SE3(
-        oM_lc
-        + np.array(
-            [[0, 0, 0, xOffset], [0, 0, 0, yOffset], [0, 0, 0, zOffset], [0, 0, 0, 0]]
-        )
-    )
     oM_rc = getcubeplacement(cube, RIGHT_HOOK)
-    oM_rc = pin.SE3(
-        oM_rc
-        + np.array(
-            [[0, 0, 0, xOffset], [0, 0, 0, -yOffset], [0, 0, 0, zOffset], [0, 0, 0, 0]]
-        )
-    )
 
     cost = 10
     speedup = 100
