@@ -73,62 +73,63 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
 
     sim.step(torques)
 
-def maketraj_bfgs_trap(q0, q1, max_acc): 
-    p0 = np.array(path)
-    npoints = min(6, len(path))
-    ntest = 10
-    skip = int(len(path) / ntest)
-
-    dt = 1/len(path)
-
+def calculate_lMr(robot, q):
     left_id = robot.model.getFrameId(LEFT_HAND)
     right_id = robot.model.getFrameId(RIGHT_HAND)
 
-    pin.framesForwardKinematics(robot.model,robot.data,path[0])
-    pin.computeJointJacobians(robot.model,robot.data,path[0])
-    oMl_ref = robot.data.oMf[left_id]
-    oMr_ref = robot.data.oMf[right_id]
-    ref_lMr = oMf_to_quat_trans(oMl_ref.inverse() * oMr_ref)
+    pin.framesForwardKinematics(robot.model,robot.data,q)
+    pin.computeJointJacobians(robot.model,robot.data,q)
+    oMl = robot.data.oMf[left_id]
+    oMr = robot.data.oMf[right_id]
+    lMr = oMf_to_quat_trans(oMl.inverse() * oMr)
 
-    def compress_q(q):
-        return np.array([a for i, a in enumerate(q) if q_optimize[i]])
+    return lMr, oMl, oMr
 
-    def decompress_q(cq):
-        q = q0.copy()
-        i = 0
-        for a in cq:
-            while not q_optimize[i]:
-                i += 1
-            q[i] = a
+def compress_q(q, q_optimize):
+    return np.array([a for i, a in enumerate(q) if q_optimize[i]])
+
+def decompress_q(cq, q_optimize):
+    q = q0.copy()
+    i = 0
+    for a in cq:
+        while not q_optimize[i]:
             i += 1
-        return np.array(q)
+        q[i] = a
+        i += 1
+    return np.array(q)
+
+def dist_cost(x, r, rho):
+    xr_norm = norm(x-r)
+    if xr_norm > rho:
+        return 0
+    else:
+        return 1 / (xr_norm + 1)  - 1 / (rho + 1)
+
+def maketraj_bfgs_trap(q0, q1, max_acc, path, q_optimize, npoints = 6, ntest=10, 
+                       lambda_lMr = 12, lambda_odist=6, lambda_ref=1): 
+    npoints = min(npoints, len(path))
+    skip = int(len(path) / ntest)
+    dt = 1/len(path)
+
+    ref_lMr, _, _ = calculate_lMr(robot, q0)
+
+    left_id = robot.model.getFrameId(LEFT_HAND)
+    right_id = robot.model.getFrameId(RIGHT_HAND)
     
-    p0 = np.array([compress_q(path[int(t)]) for t in np.linspace(0,len(path) - 1,npoints)])
+    p0 = np.array([compress_q(path[int(t)], q_optimize) for t in np.linspace(0,len(path) - 1,npoints)])
 
     def np_to_path(p):
         p = np.reshape(p, p0.shape)
-        return q0, q0, q0, *[decompress_q(p[i,:]) for i in range(npoints)], q1, q1, q1
+        return q0, q0, q0, *[decompress_q(p[i,:], q_optimize) for i in range(npoints)], q1, q1, q1
     
     def np_to_traj(p):
         q_of_t = Bezier(np_to_path(p), t_max=1)
         return q_of_t
 
-    lambda_lMr = 16
-    lambda_odist = 8
-    lambda_ref = 1
-
     lambda_total = lambda_lMr + lambda_odist + lambda_ref
-    
     lambda_lMr /= lambda_total
     lambda_odist /= lambda_total
     lambda_ref /= lambda_total
-
-    def dist_cost(x, r, rho):
-        xr_norm = norm(x-r)
-        if xr_norm > rho:
-            return 0
-        else:
-            return 1 / (xr_norm + 1)  - 1 / (rho + 1)
 
     def cost(p):
         ret = 0
@@ -162,7 +163,6 @@ def maketraj_bfgs_trap(q0, q1, max_acc):
 
             ret += 0.5 * dt * (prev_loss + loss)
             prev_loss = loss
-
 
         return ret
     
@@ -216,9 +216,7 @@ if __name__ == "__main__":
         return Quaternion(oMf.rotation), oMf.translation
 
 
-
-
-    trajs = maketraj_bfgs_trap(q0, qe, 2)
+    trajs = maketraj_bfgs_trap(q0, qe, 2, path, q_optimize)
     T = trajs[0].T_max_
 
     if True:
