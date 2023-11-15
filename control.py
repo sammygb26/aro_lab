@@ -73,6 +73,117 @@ def controllaw(sim, robot, trajs, tcurrent, cube):
 
     sim.step(torques)
 
+def maketraj_bfgs_trap(q0, q1, max_acc): 
+    p0 = np.array(path)
+    npoints = min(6, len(path))
+    ntest = 10
+    skip = int(len(path) / ntest)
+
+    dt = 1/len(path)
+
+    left_id = robot.model.getFrameId(LEFT_HAND)
+    right_id = robot.model.getFrameId(RIGHT_HAND)
+
+    pin.framesForwardKinematics(robot.model,robot.data,path[0])
+    pin.computeJointJacobians(robot.model,robot.data,path[0])
+    oMl_ref = robot.data.oMf[left_id]
+    oMr_ref = robot.data.oMf[right_id]
+    ref_lMr = oMf_to_quat_trans(oMl_ref.inverse() * oMr_ref)
+
+    def compress_q(q):
+        return np.array([a for i, a in enumerate(q) if q_optimize[i]])
+
+    def decompress_q(cq):
+        q = q0.copy()
+        i = 0
+        for a in cq:
+            while not q_optimize[i]:
+                i += 1
+            q[i] = a
+            i += 1
+        return np.array(q)
+    
+    p0 = np.array([compress_q(path[int(t)]) for t in np.linspace(0,len(path) - 1,npoints)])
+
+    def np_to_path(p):
+        p = np.reshape(p, p0.shape)
+        return q0, q0, q0, *[decompress_q(p[i,:]) for i in range(npoints)], q1, q1, q1
+    
+    def np_to_traj(p):
+        q_of_t = Bezier(np_to_path(p), t_max=1)
+        return q_of_t
+
+    lambda_lMr = 16
+    lambda_odist = 8
+    lambda_ref = 1
+
+    lambda_total = lambda_lMr + lambda_odist + lambda_ref
+    
+    lambda_lMr /= lambda_total
+    lambda_odist /= lambda_total
+    lambda_ref /= lambda_total
+
+    def dist_cost(x, r, rho):
+        xr_norm = norm(x-r)
+        if xr_norm > rho:
+            return 0
+        else:
+            return 1 / (xr_norm + 1)  - 1 / (rho + 1)
+
+    def cost(p):
+        ret = 0
+
+        q_of_t = np_to_traj(p)
+        prev_loss = 0
+        for i in range(0, len(path), skip):
+            qt = q_of_t(i * dt)
+            q_ref = path[i]
+
+            loss = norm(qt - q_ref, ord=2) * lambda_ref 
+
+            # Actual lMr
+            pin.framesForwardKinematics(robot.model,robot.data,qt)
+        
+            oMl = robot.data.oMf[left_id]
+            oMr = robot.data.oMf[right_id]
+            lMr_quat, lMr_trans = oMf_to_quat_trans(oMl.inverse() * oMr)
+
+            ## Deviation added to cost 
+            lMr_cost = Quaternion.angularDistance(ref_lMr[0], lMr_quat)
+            lMr_cost += norm(ref_lMr[1] - lMr_trans)
+
+            loss += lMr_cost * lambda_lMr
+
+            # Distance to obsticle
+            odist = dist_cost(oMl.translation, OBSTACLE_PLACEMENT.translation, 0.2)
+            odist += dist_cost(oMr.translation, OBSTACLE_PLACEMENT.translation, 0.2)
+
+            loss += odist * lambda_odist
+
+            ret += 0.5 * dt * (prev_loss + loss)
+            prev_loss = loss
+
+
+        return ret
+    
+    def callback(p):
+        print("Cost: ", cost(p))
+    
+
+    p_sol = fmin_bfgs(cost, p0, callback=callback, gtol=5e-3)
+
+    q_of_t = Bezier(np_to_path(p_sol), t_max=1)
+    vq_of_t = q_of_t.derivative(1)
+    vvq_of_t = vq_of_t.derivative(1)
+
+    max_vvq = np.max(np.abs(vvq_of_t.control_points_))
+    T = 1 / np.sqrt(max_acc / max_vvq)
+
+    q_of_t = Bezier(np_to_path(p_sol), t_max=T)
+    vq_of_t = q_of_t.derivative(1)
+    vvq_of_t = vq_of_t.derivative(1)
+
+    return q_of_t, vq_of_t, vvq_of_t
 
 if __name__ == "__main__":
     from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
@@ -104,121 +215,10 @@ if __name__ == "__main__":
     def oMf_to_quat_trans(oMf):
         return Quaternion(oMf.rotation), oMf.translation
 
-    def maketraj(q0, q1, max_acc): 
-        p0 = np.array(path)
-        npoints = min(6, len(path))
-        ntest = 10
-        skip = int(len(path) / ntest)
-
-        dt = 1/len(path)
-
-        left_id = robot.model.getFrameId(LEFT_HAND)
-        right_id = robot.model.getFrameId(RIGHT_HAND)
-
-        pin.framesForwardKinematics(robot.model,robot.data,path[0])
-        pin.computeJointJacobians(robot.model,robot.data,path[0])
-        oMl_ref = robot.data.oMf[left_id]
-        oMr_ref = robot.data.oMf[right_id]
-        ref_lMr = oMf_to_quat_trans(oMl_ref.inverse() * oMr_ref)
-
-        def compress_q(q):
-            return np.array([a for i, a in enumerate(q) if q_optimize[i]])
-
-        def decompress_q(cq):
-            q = q0.copy()
-            i = 0
-            for a in cq:
-                while not q_optimize[i]:
-                    i += 1
-                q[i] = a
-                i += 1
-            return np.array(q)
-        
-        p0 = np.array([compress_q(path[int(t)]) for t in np.linspace(0,len(path) - 1,npoints)])
-
-        def np_to_path(p):
-            p = np.reshape(p, p0.shape)
-            return q0, q0, q0, *[decompress_q(p[i,:]) for i in range(npoints)], q1, q1, q1
-        
-        def np_to_traj(p):
-            q_of_t = Bezier(np_to_path(p), t_max=1)
-            return q_of_t
-
-        lambda_lMr = 16
-        lambda_odist = 8
-        lambda_ref = 1
-
-        lambda_total = lambda_lMr + lambda_odist + lambda_ref
-        
-        lambda_lMr /= lambda_total
-        lambda_odist /= lambda_total
-        lambda_ref /= lambda_total
-
-        def dist_cost(x, r, rho):
-            xr_norm = norm(x-r)
-            if xr_norm > rho:
-                return 0
-            else:
-                return 1 / (xr_norm + 1)  - 1 / (rho + 1)
-
-        def cost(p):
-            ret = 0
-
-            q_of_t = np_to_traj(p)
-            prev_loss = 0
-            for i in range(0, len(path), skip):
-                qt = q_of_t(i * dt)
-                q_ref = path[i]
-
-                loss = norm(qt - q_ref, ord=2) * lambda_ref 
-
-                # Actual lMr
-                pin.framesForwardKinematics(robot.model,robot.data,qt)
-            
-                oMl = robot.data.oMf[left_id]
-                oMr = robot.data.oMf[right_id]
-                lMr_quat, lMr_trans = oMf_to_quat_trans(oMl.inverse() * oMr)
-
-                ## Deviation added to cost 
-                lMr_cost = Quaternion.angularDistance(ref_lMr[0], lMr_quat)
-                lMr_cost += norm(ref_lMr[1] - lMr_trans)
-
-                loss += lMr_cost * lambda_lMr
-
-                # Distance to obsticle
-                odist = dist_cost(oMl.translation, OBSTACLE_PLACEMENT.translation, 0.2)
-                odist += dist_cost(oMr.translation, OBSTACLE_PLACEMENT.translation, 0.2)
-
-                loss += odist * lambda_odist
-
-                ret += 0.5 * dt * (prev_loss + loss)
-                prev_loss = loss
-
-
-            return ret
-        
-        def callback(p):
-            print("Cost: ", cost(p))
-        
-
-        p_sol = fmin_bfgs(cost, p0, callback=callback, gtol=5e-3)
-
-        q_of_t = Bezier(np_to_path(p_sol), t_max=1)
-        vq_of_t = q_of_t.derivative(1)
-        vvq_of_t = vq_of_t.derivative(1)
-
-        max_vvq = np.max(np.abs(vvq_of_t.control_points_))
-        T = 1 / np.sqrt(max_acc / max_vvq)
-
-        q_of_t = Bezier(np_to_path(p_sol), t_max=T)
-        vq_of_t = q_of_t.derivative(1)
-        vvq_of_t = vq_of_t.derivative(1)
-
-        return q_of_t, vq_of_t, vvq_of_t
 
 
 
-    trajs = maketraj(q0, qe, 2)
+    trajs = maketraj_bfgs_trap(q0, qe, 2)
     T = trajs[0].T_max_
 
     if True:
