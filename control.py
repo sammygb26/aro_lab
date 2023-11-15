@@ -141,9 +141,9 @@ def maketraj_cube_pot(q0, q1, max_acc, path, robot, cube, viz=None):
             cube_point_prev = cube_points_opt[i - 1]
             cube_point_next = cube_points_opt[i + 1]
 
-            grad, mag = calculate_potential_gradient(cube_point, OBSTACLE_PLACEMENT, 0.03, 0.3, 0.12, 0.2)
+            grad, mag = calculate_potential_gradient(cube_point, OBSTACLE_PLACEMENT, 0.03, 0.3, 0.12, 0.25)
             
-            force = (grad * mag) * 4
+            force = (grad * mag)
             force += calculate_potential_attaction(cube_point, cube_point_prev)
             force += calculate_potential_attaction(cube_point, cube_point_next)
 
@@ -285,7 +285,7 @@ if __name__ == "__main__":
 
 
     #trajs = maketraj_bfgs_trap(q0, qe, 2, path, q_optimize, robot)
-    trajs = maketraj_cube_pot(q0, qe, 2, path, robot, cube, viz=viz)
+    trajs = maketraj_cube_pot(q0, qe, 512, path, robot, cube)
     T = trajs[0].T_max_
 
     if True:
