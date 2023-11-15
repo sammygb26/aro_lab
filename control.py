@@ -17,6 +17,7 @@ from bezier import Bezier
 from config import DT, LEFT_HAND, RIGHT_HAND
 from scipy.optimize import fmin_bfgs
 from tools import distanceToObstacle
+from util import log_cube
 
 
 # in my solution these gains were good enough for all joints but you might want to tune this.
@@ -105,7 +106,71 @@ def dist_cost(x, r, rho):
     else:
         return 1 / (xr_norm + 1)  - 1 / (rho + 1)
 
-def maketraj_bfgs_trap(q0, q1, max_acc, path, q_optimize, npoints = 6, ntest=10, 
+def calculate_potential_gradient(point, oMob, w, h, d, rho=0.2):
+    point = (oMob.inverse() @ np.array([*list(point), 1]))[:3]
+
+    closest_point = point.copy()
+
+    if np.abs(point[0]) > w:
+        closest_point[0] = w * np.sign(point[0])
+    if np.abs(point[2]) > h:
+        closest_point[2] = h * np.sign(point[2])
+    if np.abs(point[1]) > w:
+        closest_point[1] = d * np.sign(point[1])
+
+    mag = dist_cost(np.zeros(3), point, rho)
+
+    return oMob.rotation @ (point / norm(point)), mag
+
+def calculate_potential_attaction(from_point, to_point):
+    return to_point - from_point
+
+def maketraj_cube_pot(q0, q1, max_acc, path, robot, cube, viz=None):
+    n = len(path)
+    cube_points = []
+    for q in path:
+        _, oMl, oMr = calculate_lMr(robot, q)
+        cube_pos = (oMl.translation + oMr.translation) * 0.5
+        cube_points.append(cube_pos)
+
+    eps = 1e-1
+    cube_points_opt = [cube_pos.copy() for cube_pos in cube_points]
+    for i in range(50):
+        for i in range(1, n-1):
+            cube_point = cube_points_opt[i]
+            cube_point_prev = cube_points_opt[i - 1]
+            cube_point_next = cube_points_opt[i + 1]
+
+            grad, mag = calculate_potential_gradient(cube_point, OBSTACLE_PLACEMENT, 0.03, 0.3, 0.12, 0.2)
+            
+            force = (grad * mag) * 4
+            force += calculate_potential_attaction(cube_point, cube_point_prev)
+            force += calculate_potential_attaction(cube_point, cube_point_next)
+
+            cube_point += force * eps
+
+        if viz != None:
+            for i, cube_point in enumerate(cube_points_opt):
+                cubetarget = SE3(rotate('z', 0), cube_point)
+                log_cube(cubetarget, True, viz, f"cube{i}")
+
+    if viz != None:
+        for i in range(n):
+            viz.delete(f"cube{i}")
+
+    q_prev = q0
+    path = []
+    for cube_point in cube_points_opt:
+        cubetarget = SE3(rotate('z', 0), cube_point)
+        q, _ = computeqgrasppose(robot, q_prev, cube, cubetarget)
+        path.append(q)
+
+    return path_to_bezier(
+        [q0, q0, q0, *path, q1, q1, q1], max_acc
+        ) 
+
+
+def maketraj_bfgs_trap(q0, q1, max_acc, path, q_optimize, robot, npoints = 6, ntest=10, 
                        lambda_lMr = 12, lambda_odist=6, lambda_ref=1): 
     npoints = min(npoints, len(path))
     skip = int(len(path) / ntest)
@@ -169,21 +234,24 @@ def maketraj_bfgs_trap(q0, q1, max_acc, path, q_optimize, npoints = 6, ntest=10,
     def callback(p):
         print("Cost: ", cost(p))
     
-
     p_sol = fmin_bfgs(cost, p0, callback=callback, gtol=5e-3)
+    path = np_to_path(p_sol)
 
-    q_of_t = Bezier(np_to_path(p_sol), t_max=1)
+    return path_to_bezier(path, max_acc)
+
+def path_to_bezier(path, max_acc):
+    q_of_t = Bezier(path, t_max=1)
     vq_of_t = q_of_t.derivative(1)
     vvq_of_t = vq_of_t.derivative(1)
 
     max_vvq = np.max(np.abs(vvq_of_t.control_points_))
     T = 1 / np.sqrt(max_acc / max_vvq)
 
-    q_of_t = Bezier(np_to_path(p_sol), t_max=T)
+    q_of_t = Bezier(path, t_max=T)
     vq_of_t = q_of_t.derivative(1)
     vvq_of_t = vq_of_t.derivative(1)
 
-    return q_of_t, vq_of_t, vvq_of_t
+    return q_of_t,vq_of_t,vvq_of_t
 
 if __name__ == "__main__":
     from tools import setupwithpybullet, setupwithpybulletandmeshcat, rununtil
@@ -216,7 +284,8 @@ if __name__ == "__main__":
         return Quaternion(oMf.rotation), oMf.translation
 
 
-    trajs = maketraj_bfgs_trap(q0, qe, 2, path, q_optimize)
+    #trajs = maketraj_bfgs_trap(q0, qe, 2, path, q_optimize, robot)
+    trajs = maketraj_cube_pot(q0, qe, 2, path, robot, cube, viz=viz)
     T = trajs[0].T_max_
 
     if True:
