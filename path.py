@@ -48,8 +48,8 @@ def log_cube(cubePlacement, success):
 
 
 def randomCubePlacement():
-    minimums = np.array([0.2, -0.8, 1.0])
-    maximums = np.array([0.8, 0.8, 2.5])
+    minimums = np.array([0.2, -0.6, 1.0])
+    maximums = np.array([0.6, 0.6, 2.0])
     t = np.random.rand(3)
     t = (t * (maximums - minimums)) + minimums
     return pin.SE3(rotate("z", 0), t)
@@ -156,7 +156,7 @@ class RRTConnect:
             tree_b = tmp
             switched = not switched
 
-        return False, []
+        return False, self.extract_path(n_new_e, n_new_c)
 
     def extract_path(self, node_start, node_goal):
         path = []
@@ -180,10 +180,20 @@ def displaypath(robot, path, dt, viz):
         time.sleep(dt)
 
 
-def testGrasp():
-    position = pin.SE3(rotate("z", 0), np.array([0.36457381, -0.27745001, 1.01791517]))
-    q, success = computeqgrasppose(robot, qe, cube, position, viz)
-    print(q, success)
+def testPath(robot, cube, q, viz):
+    success1 = False
+    success2 = False
+
+    while not success1:
+        start = samplePlacement(robot, q, cube)
+        startq, success1 = computeqgrasppose(robot, q, cube, start, None)
+
+    while not success2:
+        goal = samplePlacement(robot, q, cube)
+        goalq, success2 = computeqgrasppose(robot, q, cube, goal, None)
+
+    path = computepath(robot, cube, startq, goalq, start, goal)
+    displaypath(robot, path, 0.02, viz)
 
 
 if __name__ == "__main__":
@@ -205,3 +215,4 @@ if __name__ == "__main__":
     path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
 
     displaypath(robot, path, dt=0.02, viz=viz)  # you ll probably want to lower dt
+    testPath(robot, cube, q, viz=None)
