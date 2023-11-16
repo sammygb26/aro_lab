@@ -22,6 +22,8 @@ from config import CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET, OBSTACLE_PLACEMENT
 from scipy.optimize import fmin_bfgs
 from util import *
 import time
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 
 def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=None):
@@ -39,7 +41,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     speedup = 100
     count = 0
 
-    while cost > 0.0001 and count < 1000:
+    while cost > 0.001 and count < 250:
         pin.framesForwardKinematics(robot.model, robot.data, q)
         pin.computeJointJacobians(robot.model, robot.data, q)
 
@@ -77,8 +79,51 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
     valid_config = (
         not collision(robot, q) and not jointlimitsviolated(robot, q) and cost < 0.001
     )
-
     return q, valid_config
+
+
+from scipy.spatial.transform import Rotation as R
+from pinocchio.utils import rotate
+
+
+def testInvGeom():
+    x = np.linspace(0.2, 0.8, 18)
+    y = np.linspace(-0.6, 0.6, 36)
+    z = np.linspace(0.9, 1.5, 18)
+    cube_placements = np.zeros((x.shape[0], y.shape[0], z.shape[0]), dtype=object)
+    success = np.zeros((x.shape[0], y.shape[0], z.shape[0]))
+    for i in range(x.shape[0]):
+        print(i)
+        for j in range(y.shape[0]):
+            print(j)
+            for k in range(z.shape[0]):
+                cube_placements[i, j, k] = pin.SE3(
+                    rotate("z", 0), np.array([x[i], y[j], z[k]])
+                )
+                pose, flag = computeqgrasppose(
+                    robot, q, cube, cube_placements[i, j, k], None
+                )
+                if flag:
+                    success[i, j, k] = 1
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection="3d")
+
+    x, y, z = np.where(success == 1)
+    ax.scatter(x, y, z, c="g", marker="o")
+    x, y, z = np.where(success == 0)
+    ax.scatter(x, y, z, c="r", marker="x")
+
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    # Use transpose of `cube` to get the direction right
+    # (bottom->up rather than left->right)
+    ax.voxels(success.T, edgecolor="k")
+    ax.set(xticklabels=[], yticklabels=[], zticklabels=[])
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -92,5 +137,7 @@ if __name__ == "__main__":
     q0, successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
     qe, successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET, viz)
     print(successinit, successend)
+
+    # testInvGeom()
 
     updatevisuals(viz, robot, cube, q0)
