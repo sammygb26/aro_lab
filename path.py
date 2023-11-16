@@ -29,10 +29,7 @@ def computepath(robot, cube, qinit, qgoal, cubeplacementq0, cubeplacementqgoal):
     flag, (path, configurations) = RRT.plan()
     if flag == False:
         print(":sad_face:")
-        return (
-            flag,
-            configurations,
-        )
+        return (configurations, flag)
 
     return configurations
 
@@ -186,14 +183,40 @@ def testPath(robot, cube, q, viz):
 
     while not success1:
         start = samplePlacement(robot, q, cube)
-        startq, success1 = computeqgrasppose(robot, q, cube, start, None)
+        startq, success1 = computeqgrasppose(robot, q, cube, start)
 
     while not success2:
         goal = samplePlacement(robot, q, cube)
-        goalq, success2 = computeqgrasppose(robot, q, cube, goal, None)
+        goalq, success2 = computeqgrasppose(robot, q, cube, goal)
 
     path = computepath(robot, cube, startq, goalq, start, goal)
-    displaypath(robot, path, 0.02, viz)
+    return path
+
+
+def variability():
+    counter = 0
+    for i in range(10):
+        testPath(robot, cube, q, viz=viz)
+        if len(path) == 2:
+            print(path[1])
+        else:
+            counter += 1
+    print(counter)
+
+
+def repeatability():
+    start_time = time.perf_counter()
+    counter = 0
+    for i in range(100):
+        path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+        if len(path) == 2:
+            print(path[1])
+        else:
+            counter += 1
+    end_time = time.perf_counter()
+    time_taken = end_time - start_time
+    print(f"Time taken: {time_taken} seconds")
+    print(f"Average time: {time_taken / 100} seconds")
 
 
 if __name__ == "__main__":
@@ -213,6 +236,11 @@ if __name__ == "__main__":
         print("error: invalid initial or end configuration")
 
     path = computepath(robot, cube, q0, qe, CUBE_PLACEMENT, CUBE_PLACEMENT_TARGET)
+    if len(path) == 2:
+        print("Path not successfully computed")
+        path = path[0]
+        flag = path[1]
+    variability()
 
     displaypath(robot, path, dt=0.02, viz=viz)  # you ll probably want to lower dt
-    testPath(robot, cube, q, viz=None)
+    # testPath(robot, cube, q, viz=viz)
