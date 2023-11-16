@@ -124,8 +124,6 @@ def testInvGeom():
 
     x, y, z = np.where(success == 1)
     ax.scatter(x, y, z, c="g", marker="o")
-    x, y, z = np.where(success == 0)
-    ax.scatter(x, y, z, c="r", marker="x")
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
@@ -139,6 +137,8 @@ def testInvGeom():
     plt.show()
 
 
+
+
 if __name__ == "__main__":
     from tools import setupwithmeshcat
     from setup_meshcat import updatevisuals
@@ -150,7 +150,15 @@ if __name__ == "__main__":
     q0, successinit = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT, viz)
     qe, successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET, viz)
     print(successinit, successend)
+    
+    def repetitions():
+        count = 0
+        q = robot.model.randomConfiguration()
+        for i in range(100):
+            qNew, success = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT)
+            if success:
+                count+=1
+        print(count)
 
-    testInvGeom()
-
+    repetitions()
     updatevisuals(viz, robot, cube, q0)
