@@ -58,6 +58,9 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
         lh_nu = pin.log(oM_lh.inverse() * oM_lc).vector
         rh_nu = pin.log(oM_rh.inverse() * oM_rc).vector
 
+        lh_nu[3] = 0.0
+        rh_nu[3] = 0.0
+
         vq = pinv(o_Jright) @ rh_nu
         Pr = np.eye(robot.nv) - pinv(o_Jright) @ o_Jright
         vq += pinv(o_Jleft @ Pr) @ (lh_nu - o_Jleft @ vq)
@@ -84,6 +87,7 @@ def computeqgrasppose(robot: pin.RobotWrapper, qcurrent, cube, cubetarget, viz=N
 
 from scipy.spatial.transform import Rotation as R
 from pinocchio.utils import rotate
+import matplotlib.image as mpimg
 
 
 def testInvGeom():
@@ -105,6 +109,15 @@ def testInvGeom():
                 )
                 if flag:
                     success[i, j, k] = 1
+
+    for bitmap in success:
+        # Display the bitmap using matplotlib
+        plt.imshow(
+            bitmap, cmap="gray"
+        )  # You can adjust the colormap based on your image type
+        plt.title("2D Bitmap")
+        plt.axis("off")  # Turn off axis labels
+        plt.show()
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
@@ -138,6 +151,6 @@ if __name__ == "__main__":
     qe, successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET, viz)
     print(successinit, successend)
 
-    # testInvGeom()
+    testInvGeom()
 
     updatevisuals(viz, robot, cube, q0)
