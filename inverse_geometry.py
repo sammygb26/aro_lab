@@ -133,6 +133,14 @@ def testInvGeom():
     ax.set(xticklabels=[], yticklabels=[], zticklabels=[])
     plt.show()
 
+def repetitions():
+    count = 0
+    q = q0
+    for i in range(100):
+        qNew, success = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT)
+        if success:
+            count += 1
+    print(count)
 
 if __name__ == "__main__":
     from tools import setupwithmeshcat
@@ -146,14 +154,4 @@ if __name__ == "__main__":
     qe, successend = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT_TARGET, viz)
     print(successinit, successend)
 
-    def repetitions():
-        count = 0
-        q = robot.model.randomConfiguration()
-        for i in range(100):
-            qNew, success = computeqgrasppose(robot, q, cube, CUBE_PLACEMENT)
-            if success:
-                count += 1
-        print(count)
-
-    repetitions()
     updatevisuals(viz, robot, cube, q0)

@@ -240,7 +240,6 @@ if __name__ == "__main__":
         print("Path not successfully computed")
         path = path[0]
         flag = path[1]
-    variability()
 
     displaypath(robot, path, dt=0.02, viz=viz)  # you ll probably want to lower dt
     # testPath(robot, cube, q, viz=viz)
